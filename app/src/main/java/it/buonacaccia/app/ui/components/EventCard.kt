@@ -2,19 +2,8 @@ package it.buonacaccia.app.ui.components
 
 import android.content.Intent
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.padding
-import androidx.compose.material3.AssistChip
-import androidx.compose.material3.AssistChipDefaults
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Text
+import androidx.compose.foundation.layout.*
+import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -40,11 +29,8 @@ fun EventCard(ev: BcEvent, modifier: Modifier = Modifier) {
         ev.enrolled?.let { looksLikeMoney(it) } == true -> ev.enrolled
         else -> ev.fee
     }
-    val deadlineDisplay: String? =
-        ev.fee?.takeIf { looksLikeDate(it) } // some tables put the registration deadline here
-
-    val enrolledDisplay: String? =
-        ev.enrolled?.takeIf { !looksLikeMoney(it) } // Avoid showing the price under "Subscribers"
+    val deadlineDisplay: String? = ev.fee?.takeIf { looksLikeDate(it) }
+    val enrolledDisplay: String? = ev.enrolled?.takeIf { !looksLikeMoney(it) }
 
     Card(
         modifier = modifier
@@ -69,7 +55,7 @@ fun EventCard(ev: BcEvent, modifier: Modifier = Modifier) {
                     AssistChip(onClick = {}, label = { Text(it) })
                 }
                 ev.type?.takeIf { it.isNotBlank() }?.let {
-                    AssistChip(onClick = {}, label = { Text(it) }, colors = AssistChipDefaults.assistChipColors())
+                    AssistChip(onClick = {}, label = { Text(it) })
                 }
                 ev.status?.takeIf { it.isNotBlank() }?.let {
                     AssistChip(onClick = {}, label = { Text(it) })

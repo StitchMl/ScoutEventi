@@ -71,6 +71,14 @@ private fun MainScreen(
                 onValueChange = vm::onQueryChange
             )
 
+            FiltersRow(
+                regions = vm.regions,
+                selectedRegion = state.region ?: "Tutte",
+                onRegionChange = { vm.onRegionChange(if (it == "Tutte") null else it) },
+                selectedUnit = state.unit,
+                onUnitChange = vm::onUnitChange
+            )
+
             if (state.error != null) {
                 Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                     Text(text = "Error: ${state.error}")
@@ -93,9 +101,7 @@ private fun MainScreen(
                         contentPadding = PaddingValues(12.dp),
                         verticalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
-                        items(events) { ev ->
-                            EventCard(ev = ev)
-                        }
+                        items(events) { ev -> EventCard(ev = ev) }
                         item { Spacer(Modifier.height(24.dp)) }
                     }
                 }
@@ -110,9 +116,7 @@ private fun SearchBarField(
     onValueChange: (String) -> Unit
 ) {
     var tf by remember { mutableStateOf(TextFieldValue(value)) }
-    LaunchedEffect(value) {
-        if (value != tf.text) tf = tf.copy(text = value)
-    }
+    LaunchedEffect(value) { if (value != tf.text) tf = tf.copy(text = value) }
     OutlinedTextField(
         value = tf,
         onValueChange = {
@@ -126,4 +130,84 @@ private fun SearchBarField(
             .fillMaxWidth()
             .padding(horizontal = 12.dp, vertical = 8.dp)
     )
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun FiltersRow(
+    regions: List<String>,
+    selectedRegion: String,
+    onRegionChange: (String) -> Unit,
+    selectedUnit: UnitFilter,
+    onUnitChange: (UnitFilter) -> Unit
+) {
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 12.dp, vertical = 4.dp),
+        horizontalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        // REGION (weight goes on the Box, not just the TextField)
+        var expandedR by remember { mutableStateOf(false) }
+        ExposedDropdownMenuBox(
+            expanded = expandedR,
+            onExpandedChange = { expandedR = it },
+            modifier = Modifier.weight(1f)
+        ) {
+            OutlinedTextField(
+                modifier = Modifier.menuAnchor(),
+                value = selectedRegion,
+                onValueChange = {},
+                readOnly = true,
+                label = { Text("Regione") },
+                trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expandedR) }
+            )
+            ExposedDropdownMenu(expanded = expandedR, onDismissRequest = { expandedR = false }) {
+                regions.forEach { r ->
+                    DropdownMenuItem(
+                        text = { Text(r) },
+                        onClick = { onRegionChange(r); expandedR = false }
+                    )
+                }
+            }
+        }
+
+        // UNIT (same width as the first)
+        var expandedU by remember { mutableStateOf(false) }
+        val unitLabel = when (selectedUnit) {
+            UnitFilter.TUTTE -> "Tutte"
+            UnitFilter.BRANCO -> "Branco"
+            UnitFilter.REPARTO -> "Reparto"
+            UnitFilter.CLAN -> "Clan"
+            UnitFilter.CAPI -> "Capi"
+        }
+        ExposedDropdownMenuBox(
+            expanded = expandedU,
+            onExpandedChange = { expandedU = it },
+            modifier = Modifier.weight(1f)
+        ) {
+            OutlinedTextField(
+                modifier = Modifier.menuAnchor(),
+                value = unitLabel,
+                onValueChange = {},
+                readOnly = true,
+                label = { Text("Unità") },
+                trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expandedU) }
+            )
+            ExposedDropdownMenu(expanded = expandedU, onDismissRequest = { expandedU = false }) {
+                listOf(
+                    UnitFilter.TUTTE to "Tutte",
+                    UnitFilter.BRANCO to "Branco",
+                    UnitFilter.REPARTO to "Reparto",
+                    UnitFilter.CLAN to "Clan",
+                    UnitFilter.CAPI to "Capi"
+                ).forEach { (value, label) ->
+                    DropdownMenuItem(
+                        text = { Text(label) },
+                        onClick = { onUnitChange(value); expandedU = false }
+                    )
+                }
+            }
+        }
+    }
 }

@@ -12,14 +12,27 @@ import it.buonacaccia.app.data.BcEvent
 import it.buonacaccia.app.data.EventsRepository
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
+import java.util.Locale
 import javax.inject.Inject
+
+enum class UnitFilter { TUTTE, BRANCO, REPARTO, CLAN, CAPI }
 
 data class EventsUiState(
     val loading: Boolean = false,
     val items: List<BcEvent> = emptyList(),
     val error: String? = null,
-    val query: String = ""
+    val query: String = "",
+    val region: String? = null,           // null = tutte
+    val unit: UnitFilter = UnitFilter.TUTTE
 )
+
+private val IT_REGIONS = listOf(
+    "Abruzzo","Basilicata","Calabria","Campania","Emilia-Romagna","Friuli-Venezia Giulia",
+    "Lazio","Liguria","Lombardia","Marche","Molise","Piemonte","Puglia","Sardegna",
+    "Sicilia","Toscana","Trentino-Alto Adige","Umbria","Valle d'Aosta","Veneto",
+    // short/common forms
+    "Emilia Romagna","Friuli Venezia Giulia","Trentino","Alto Adige","Val d'Aosta"
+).sortedBy { it.length }.reversed() // prima i nomi più lunghi per match più stabili
 
 @RequiresApi(Build.VERSION_CODES.TIRAMISU)
 @HiltViewModel
@@ -32,9 +45,7 @@ class EventsViewModel @Inject constructor(
 
     private var loadJob: Job? = null
 
-    init {
-        refresh()
-    }
+    init { refresh() }
 
     @RequiresApi(Build.VERSION_CODES.TIRAMISU)
     fun refresh() {
@@ -47,19 +58,61 @@ class EventsViewModel @Inject constructor(
         }
     }
 
-    fun onQueryChange(q: String) {
-        state = state.copy(query = q)
+    fun onQueryChange(q: String) { state = state.copy(query = q) }
+    fun onRegionChange(r: String?) { state = state.copy(region = r) }
+    fun onUnitChange(u: UnitFilter) { state = state.copy(unit = u) }
+
+    /** Attempt to get region from ev.region, otherwise from location/title */
+    private fun guessRegion(ev: BcEvent): String? {
+        ev.region?.trim()?.takeIf { it.isNotEmpty() }?.let { return it }
+        val hay = listOfNotNull(ev.location, ev.title).joinToString(" ").lowercase()
+        return IT_REGIONS.firstOrNull { r -> hay.contains(r.lowercase()) }
+    }
+
+    /** List regions really present in events (with "All" in the lead). */
+    val regions: List<String> get() {
+        val present = state.items.mapNotNull { guessRegion(it) }
+            .toSortedSet(String.CASE_INSENSITIVE_ORDER)
+        return listOf("Tutte") + present.toList()
+    }
+
+    /** Classify the event in the unit using type/title and actual acronyms (LC/EG/RS/ROSS) */
+    private fun classifyUnit(ev: BcEvent): UnitFilter? {
+        // we read directly from the "Type" column
+        val t = (ev.type ?: "").trim().uppercase(Locale.ROOT)
+
+        return when {
+            t.startsWith("LC") -> UnitFilter.BRANCO
+            t.startsWith("EG") -> UnitFilter.REPARTO
+            t.startsWith("RS") || t.contains("ROSS") -> UnitFilter.CLAN
+            t.contains("CAPI") -> UnitFilter.CAPI
+            else -> null
+        }
     }
 
     val filtered: List<BcEvent>
         get() {
             val q = state.query.trim().lowercase()
-            if (q.isBlank()) return state.items
-            return state.items.filter { ev ->
-                ev.title.lowercase().contains(q) ||
-                        (ev.region?.lowercase()?.contains(q) == true) ||
-                        (ev.type?.lowercase()?.contains(q) == true) ||
-                        (ev.location?.lowercase()?.contains(q) == true)
-            }
+            return state.items
+                .asSequence()
+                .filter { ev ->
+                    if (q.isBlank()) true else
+                        ev.title.lowercase().contains(q) ||
+                                (ev.region?.lowercase()?.contains(q) == true) ||
+                                (ev.type?.lowercase()?.contains(q) == true) ||
+                                (ev.location?.lowercase()?.contains(q) == true)
+                }
+                .filter { ev ->
+                    state.region == null ||
+                            state.region == "Tutte" ||
+                            guessRegion(ev)?.equals(state.region, ignoreCase = true) == true
+                }
+                .filter { ev ->
+                    when (state.unit) {
+                        UnitFilter.TUTTE -> true
+                        else -> classifyUnit(ev) == state.unit
+                    }
+                }
+                .toList()
         }
 }
