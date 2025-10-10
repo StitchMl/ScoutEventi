@@ -1,0 +1,7 @@
+<resources>
+    <string name="app_name">BuonaCaccia</string>
+    <string name="search_hint">Cerca eventi…</string>
+    <string name="open_on_site">Apri su BuonaCaccia</string>
+    <string name="retry">Riprova</string>
+    <string name="empty">Nessun evento trovato</string>
+</resources>
