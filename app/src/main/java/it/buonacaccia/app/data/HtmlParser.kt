@@ -50,21 +50,21 @@ object HtmlParser {
             val partenza = parseDate(getCell(index, tds, "Partenza")?.text())
             val rientro  = parseDate(getCell(index, tds, "Rientro")?.text())
             val quota    = getCell(index, tds, "Quota")?.text()?.trim()?.ifBlank { null }
-            val localita = getCell(index, tds, "Località")?.text()?.trim()?.ifBlank { null }
+            val locality = getCell(index, tds, "Località")?.text()?.trim()?.ifBlank { null }
             val iscritti = getCell(index, tds, "Iscritti")?.text()?.trim()?.ifBlank { null }
-            val stato    = getCell(index, tds, "Stato")?.text()?.trim()?.ifBlank { null }
+            val state    = getCell(index, tds, "Stato")?.text()?.trim()?.ifBlank { null }
 
             BcEvent(
                 id = id,
-                type = tipo,            // ← Tipo/Unità (LC, EG, RS/ROSS, Capi…)
-                title = titolo,         // ← sempre dalla colonna “Titolo”
+                type = tipo,
+                title = titolo,
                 region = regione,
                 startDate = partenza,
                 endDate = rientro,
                 fee = quota,
-                location = localita,
+                location = locality,
                 enrolled = iscritti,
-                status = stato,
+                status = state,
                 detailUrl = detailUrl
             )
         }
@@ -78,7 +78,7 @@ object HtmlParser {
         return null
     }
 
-    /** Trova la tabella che contiene gli header attesi. */
+    /** Find the table that contains the expected headers. */
     private fun findEventsTable(doc: Document): Element? {
         val tables = doc.select("table")
         return tables.firstOrNull { table ->
@@ -87,29 +87,44 @@ object HtmlParser {
         } ?: doc.selectFirst("table")
     }
 
-    /** Restituisce la riga header che contiene “Titolo”. */
+    /** Returns the header line that contains "Title". */
     private fun headerRow(table: Element): Element? {
         val allRows = table.select("thead tr, tr")
-        // preferisci la riga che contiene un th “Titolo”
+        // prefer the line that contains a th "Title"
         return allRows.firstOrNull { row ->
             row.select("th").any { it.text().trim().equals("Titolo", ignoreCase = true) }
         } ?: allRows.firstOrNull { it.select("th").isNotEmpty() }
     }
 
-    /** Crea la mappa NomeColonna → indice partendo SOLO dalla riga header individuata. */
+    /** Create the NameColumn → Index map starting ONLY from the identified header row. */
     private fun headerMapFromRow(row: Element): Map<String, Int> {
         val ths = row.select("th")
+        // For logging, we create a textual representation of the found headers
+        val headerTextsForLogging = ths.mapIndexed { index, element -> "$index:'${element.text().trim()}'" }
+        Timber.d("Headings available for mapping: %s", headerTextsForLogging)
+
         fun idx(vararg keys: String): Int? {
-            // cerca per contains su ognuna delle varianti
+            // Search for a match for each key provided (e.g., "Location," "Locality")
             for (k in keys) {
+                // indexOfFirst finds the index of the first element that satisfies the condition
                 val i = ths.indexOfFirst { it.text().trim().contains(k, ignoreCase = true) }
-                if (i >= 0) return i
+
+                // If the index is valid (>= 0), it means that we have found a match
+                if (i >= 0) {
+                    // Log indicating which key produced a match and at which index
+                    Timber.d("Found match for key '%s' at index %d (text: '%s')", k, i, ths[i].text().trim())
+                    return i
+                }
             }
+            // If the loop ends without finding anything, log failure
+            Timber.w("No matches found for keys: %s", keys.joinToString())
             return null
         }
-        return mapOf(
+
+        // Map creation remains unchanged, but now the 'idx' function will print logs
+        val indexMap = mapOf(
             "Tipo"     to (idx("Tipo") ?: -1),
-            "Titolo"   to (idx("Titolo") ?: 0), // Titolo DEVE esserci
+            "Titolo"   to (idx("Titolo") ?: 0),
             "Regione"  to (idx("Regione") ?: -1),
             "Partenza" to (idx("Partenza") ?: -1),
             "Rientro"  to (idx("Rientro") ?: -1),
@@ -118,6 +133,11 @@ object HtmlParser {
             "Iscritti" to (idx("Iscritti") ?: -1),
             "Stato"    to (idx("Stato") ?: -1)
         )
+
+        // Final log with the resulting map
+        Timber.d("Column index map created: %s", indexMap)
+
+        return indexMap
     }
 
     private fun getCell(map: Map<String, Int>, tds: List<Element>, key: String): Element? {
