@@ -88,9 +88,17 @@ object HtmlParser {
                     }
                 }
 
+            val effectiveType = typeText ?: when (branch) {
+                Branch.RS -> "RS"
+                Branch.EG -> "EG"
+                Branch.LC -> "LC"
+                Branch.CAPI -> "CAPI"
+                null -> null
+            }
+
             val event = BcEvent(
                 id = id,
-                type = typeText,
+                type = effectiveType,
                 title = title,
                 region = region,
                 startDate = start,
