@@ -114,4 +114,12 @@ dependencies {
     implementation(libs.androidx.compose.material.icons.core)
     implementation(libs.androidx.compose.material.icons.extended)
 
+    // WorkManager
+    implementation(libs.androidx.work.runtime.ktx)
+
+    // DataStore (to store the IDs of events already seen)
+    implementation(libs.androidx.datastore.preferences)
+
+    // Notification compat (usually already transitive, but I make it explicit)
+    implementation(libs.androidx.core.ktx.v1170)
 }

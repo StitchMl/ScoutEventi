@@ -16,6 +16,7 @@ browser = "1.9.0"
 browserVersion = "1.8.0"
 composeBomVersion = "2024.10.00"
 coreKtxVersion = "1.13.1"
+datastorePreferences = "1.1.7"
 espressoCoreVersion = "3.6.1"
 hiltAndroid = "2.57.2"
 hiltAndroidVersion = "2.52"
@@ -90,6 +91,7 @@ androidx-compose-ui-ui4 = { module = "androidx.compose.ui:ui" }
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
 androidx-core-ktx-v1131 = { module = "androidx.core:core-ktx", version.ref = "coreKtxVersion" }
 androidx-core-ktx-v1170 = { module = "androidx.core:core-ktx", version.ref = "androidxCoreKtx" }
+androidx-datastore-preferences = { module = "androidx.datastore:datastore-preferences", version.ref = "datastorePreferences" }
 androidx-espresso-core-v361 = { module = "androidx.test.espresso:espresso-core", version.ref = "espressoCoreVersion" }
 androidx-espresso-core-v370 = { module = "androidx.test.espresso:espresso-core", version.ref = "androidxEspressoCore" }
 androidx-hilt-navigation-compose = { module = "androidx.hilt:hilt-navigation-compose", version.ref = "hiltNavigationCompose" }

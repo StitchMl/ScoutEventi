@@ -5,7 +5,7 @@ import java.time.LocalDate
 enum class Branch { LC, EG, RS, CAPI }
 
 data class BcEvent(
-    val id: String?,            // es. "12345" da event.aspx?e=12345 (se presente)
+    val id: String?,            // es. "12345" da event.aspx?e=12345 (if present)
     val type: String?,
     val title: String,
     val region: String?,

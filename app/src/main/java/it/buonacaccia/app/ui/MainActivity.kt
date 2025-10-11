@@ -32,6 +32,10 @@ class MainActivity : ComponentActivity() {
     @RequiresApi(Build.VERSION_CODES.TIRAMISU)
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        val pm = checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS)
+        if (pm != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+            requestPermissions(arrayOf(android.Manifest.permission.POST_NOTIFICATIONS), 100)
+        }
         setContent {
             BuonaCacciaTheme {
                 MainScreen()
