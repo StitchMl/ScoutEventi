@@ -9,10 +9,10 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import dagger.hilt.android.lifecycle.HiltViewModel
 import it.buonacaccia.app.data.BcEvent
+import it.buonacaccia.app.data.Branch
 import it.buonacaccia.app.data.EventsRepository
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
-import java.util.Locale
 import javax.inject.Inject
 
 enum class UnitFilter { TUTTE, BRANCO, REPARTO, CLAN, CAPI }
@@ -76,20 +76,6 @@ class EventsViewModel @Inject constructor(
         return listOf("Tutte") + present.toList()
     }
 
-    /** Classify the event in the unit using type/title and actual acronyms (LC/EG/RS/ROSS) */
-    private fun classifyUnit(ev: BcEvent): UnitFilter? {
-        // we read directly from the "Type" column
-        val t = (ev.type ?: "").trim().uppercase(Locale.ROOT)
-
-        return when {
-            t.startsWith("LC") -> UnitFilter.BRANCO
-            t.startsWith("EG") -> UnitFilter.REPARTO
-            t.startsWith("RS") || t.contains("ROSS") -> UnitFilter.CLAN
-            t.contains("CAPI") -> UnitFilter.CAPI
-            else -> null
-        }
-    }
-
     val filtered: List<BcEvent>
         get() {
             val q = state.query.trim().lowercase()
@@ -110,7 +96,10 @@ class EventsViewModel @Inject constructor(
                 .filter { ev ->
                     when (state.unit) {
                         UnitFilter.TUTTE -> true
-                        else -> classifyUnit(ev) == state.unit
+                        UnitFilter.BRANCO  -> ev.branch == Branch.LC
+                        UnitFilter.REPARTO  -> ev.branch == Branch.EG
+                        UnitFilter.CLAN  -> ev.branch == Branch.RS
+                        UnitFilter.CAPI-> ev.branch == Branch.CAPI
                     }
                 }
                 .toList()

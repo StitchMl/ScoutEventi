@@ -74,6 +74,19 @@ object HtmlParser {
             val enrolled = cells.getOrNull(iTitle + 6)?.text()?.trim()?.ifBlank { null } // "35 / 30"
             // after "Enrolled" there is a blank column, then "Status"
             val status   = cells.getOrNull(iTitle + 8)?.text()?.trim()?.ifBlank { null }
+            // Branch from the first cell: search for the image branch_*.png
+            val branch: Branch? = cells.getOrNull(0)
+                ?.selectFirst("img[src]")
+                ?.attr("src")
+                ?.lowercase()
+                ?.let { src ->
+                    when {
+                        "branch_rs" in src -> Branch.RS
+                        "branch_eg" in src -> Branch.EG
+                        "branch_lc" in src -> Branch.LC
+                        else -> Branch.CAPI
+                    }
+                }
 
             val event = BcEvent(
                 id = id,
@@ -86,7 +99,8 @@ object HtmlParser {
                 location = location,
                 enrolled = enrolled,
                 status = status,
-                detailUrl = detailUrl
+                detailUrl = detailUrl,
+                branch = branch
             )
             Timber.v("Parsed event: %s", event)
             event
@@ -108,68 +122,6 @@ object HtmlParser {
             val headers = table.select("th").map { it.text().trim().lowercase(Locale.ITALY) }
             listOf("titolo", "regione", "partenza", "rientro").all { h -> headers.any { it.contains(h) } }
         } ?: doc.selectFirst("table")
-    }
-
-    /** Returns the header line that contains "Title". */
-    private fun headerRow(table: Element): Element? {
-        // Only DIRECT header rows of the table
-        val theadRow = table.select("> thead > tr").firstOrNull()
-        val header = theadRow ?: table.select("> tr").firstOrNull { it.select("> th").isNotEmpty() }
-        // Of the candidates, prefer the one that contains "Title"
-        return when {
-            header == null -> null
-            header.select("> th").any { it.text().trim().equals("Titolo", true) } -> header
-            else -> header
-        }
-    }
-
-    /** Create the NameColumn → Index map starting ONLY from the identified header row. */
-    private fun headerMapFromRow(row: Element): Map<String, Int> {
-        val ths = row.select("th")
-        // For logging, we create a textual representation of the found headers
-        val headerTextsForLogging = ths.mapIndexed { index, element -> "$index:'${element.text().trim()}'" }
-        Timber.d("Headings available for mapping: %s", headerTextsForLogging)
-
-        fun idx(vararg keys: String): Int? {
-            // Search for a match for each key provided (e.g., "Location," "Locality")
-            for (k in keys) {
-                // indexOfFirst finds the index of the first element that satisfies the condition
-                val i = ths.indexOfFirst { it.text().trim().contains(k, ignoreCase = true) }
-
-                // If the index is valid (>= 0), it means that we have found a match
-                if (i >= 0) {
-                    // Log indicating which key produced a match and at which index
-                    Timber.d("Found match for key '%s' at index %d (text: '%s')", k, i, ths[i].text().trim())
-                    return i
-                }
-            }
-            // If the loop ends without finding anything, log failure
-            Timber.w("No matches found for keys: %s", keys.joinToString())
-            return null
-        }
-
-        // Map creation remains unchanged, but now the 'idx' function will print logs
-        val indexMap = mapOf(
-            "Tipo"     to (idx("Tipo") ?: -1),
-            "Titolo"   to (idx("Titolo") ?: 0),
-            "Regione"  to (idx("Regione") ?: -1),
-            "Partenza" to (idx("Partenza") ?: -1),
-            "Rientro"  to (idx("Rientro") ?: -1),
-            "Quota"    to (idx("Quota") ?: -1),
-            "Località" to (idx("Località", "Localita") ?: -1),
-            "Iscritti" to (idx("Iscritti") ?: -1),
-            "Stato"    to (idx("Stato") ?: -1)
-        )
-
-        // Final log with the resulting map
-        Timber.d("Column index map created: %s", indexMap)
-
-        return indexMap
-    }
-
-    private fun getCell(map: Map<String, Int>, tds: List<Element>, key: String): Element? {
-        val idx = map[key] ?: -1
-        return if (idx in tds.indices) tds[idx] else null
     }
 
     @RequiresApi(Build.VERSION_CODES.TIRAMISU)

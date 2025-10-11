@@ -2,6 +2,8 @@ package it.buonacaccia.app.data
 
 import java.time.LocalDate
 
+enum class Branch { LC, EG, RS, CAPI }
+
 data class BcEvent(
     val id: String?,            // es. "12345" da event.aspx?e=12345 (se presente)
     val type: String?,
@@ -13,5 +15,6 @@ data class BcEvent(
     val location: String?,
     val enrolled: String?,      // es. "34/40"
     val status: String?,        // es. "Iscrizioni aperte"
-    val detailUrl: String
+    val detailUrl: String,
+    val branch: Branch? = null
 )

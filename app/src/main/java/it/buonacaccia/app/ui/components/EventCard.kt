@@ -3,6 +3,7 @@ package it.buonacaccia.app.ui.components
 import android.content.Intent
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
@@ -13,9 +14,19 @@ import androidx.core.net.toUri
 import it.buonacaccia.app.data.BcEvent
 import java.time.format.DateTimeFormatter
 import java.util.Locale
+import androidx.compose.ui.graphics.Color
+import it.buonacaccia.app.data.Branch
+
+private fun branchColor(branch: Branch?): Color = when (branch) {
+    Branch.RS   -> Color(0xFFEF5350) // rosso
+    Branch.EG   -> Color(0xFF66BB6A) // verde
+    Branch.LC   -> Color(0xFFFFCA28) // giallo
+    Branch.CAPI, null -> Color(0xFF8E24AA) // viola default
+}
 
 @Composable
 fun EventCard(ev: BcEvent, modifier: Modifier = Modifier) {
+    val tint = branchColor(ev.branch)
     val ctx = LocalContext.current
     val fmt = DateTimeFormatter.ofPattern("dd/MM/yyyy", Locale.ITALY)
 
@@ -49,6 +60,19 @@ fun EventCard(ev: BcEvent, modifier: Modifier = Modifier) {
             )
 
             Spacer(Modifier.height(6.dp))
+            ev.type?.takeIf { it.isNotBlank() }?.let { t ->
+                Surface(
+                    color = tint.copy(alpha = 0.15f),
+                    shape = RoundedCornerShape(10.dp)
+                ) {
+                    Text(
+                        text = t,
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp),
+                        color = tint,
+                        style = MaterialTheme.typography.labelMedium
+                    )
+                }
+            }
 
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 ev.region?.takeIf { it.isNotBlank() }?.let {
