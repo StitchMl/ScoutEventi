@@ -22,51 +22,74 @@ object HtmlParser {
     @RequiresApi(Build.VERSION_CODES.TIRAMISU)
     fun parseEvents(html: String, baseUrl: String): List<BcEvent> {
         val doc = Jsoup.parse(html, baseUrl)
-        val table = findEventsTable(doc) ?: return emptyList()
 
-        val header = headerRow(table) ?: return emptyList()
-        val index = headerMapFromRow(header)
+        // 1) find the table with the expected headers
+        val table = findEventsTable(doc)
+        if (table == null) {
+            Timber.w("No suitable table found for events in the HTML.")
+            return emptyList()
+        }
+        Timber.d("Found events table.")
 
-        Timber.d("Events table header -> %s",
-            header.select("th").joinToString(" | ") { it.text().trim() })
-        Timber.d("Column index map -> %s", index.toString())
-
-        val rows = table.select("tbody tr").ifEmpty { table.select("tr").drop(table.indexOf(header) + 1) }
+        // 2) DATA rows: only direct children of the table, no nested <tr> / header
+        val rows = (table.select("> tbody > tr") + table.select("> tr"))
+            .distinct()
+            .filter { row -> row.select("> th").isEmpty() && row.select("> td").isNotEmpty() }
+        Timber.d("Found %d potential event rows.", rows.size)
 
         return rows.mapNotNull { tr ->
-            val tds = tr.select("td")
-            if (tds.isEmpty()) return@mapNotNull null
+            // 3) cells: only direct children of the <tr>
+            val cells = tr.select("> th, > td")
+            if (cells.isEmpty()) return@mapNotNull null
 
-            val titoloCell = getCell(index, tds, "Titolo") ?: return@mapNotNull null
-            val titoloLink = titoloCell.selectFirst("a")
-            val titolo = (titoloLink?.text() ?: titoloCell.text()).trim()
-            if (titolo.isBlank()) return@mapNotNull null
+            // 4) find the cell that contains the LINK to the event (it is ALWAYS the Title)
+            val iTitle = cells.indexOfFirst {
+                it.select("a[href]").any { a ->
+                    val h = a.attr("href")
+                    h.contains("event.aspx", ignoreCase = true) || h.contains("/event.aspx", ignoreCase = true)
+                }
+            }
+            if (iTitle == -1) {
+                Timber.w("Row skipped: could not find event link (title). Row HTML: %s", tr.html())
+                return@mapNotNull null
+            }
+            Timber.d("Row link candidate: %s", cells.select("a[href]").joinToString { it.attr("href") })
 
-            val detailUrl = titoloLink?.absUrl("href")?.takeIf { it.isNotBlank() } ?: baseUrl
+            val link = cells[iTitle].selectFirst("a[href]") ?: return@mapNotNull null
+            val title = link.text().trim()
+            if (title.isBlank()) {
+                Timber.w("Row skipped: event title is blank. Row HTML: %s", tr.html())
+                return@mapNotNull null
+            }
+
+            val detailUrl = link.absUrl("href").ifBlank { baseUrl }
             val id = extractEventId(detailUrl)
+            // 5) reading RELATIVE to positions with respect to the title (coincides with the structure you pasted)
+            val typeText = cells.getOrNull(0)?.text()?.trim()?.ifBlank { null }          // "ROSS", "CapiLC", ...
+            val region   = cells.getOrNull(iTitle + 1)?.text()?.trim()?.ifBlank { null } // "Piemonte"
+            val start    = parseDate(cells.getOrNull(iTitle + 2)?.text())                // "23/10/2025"
+            val end      = parseDate(cells.getOrNull(iTitle + 3)?.text())                // "28/10/2025"
+            val fee      = cells.getOrNull(iTitle + 4)?.text()?.trim()?.ifBlank { null } // "20,00 €"
+            val location = cells.getOrNull(iTitle + 5)?.text()?.trim()?.ifBlank { null } // "Ivrea (TO)"
+            val enrolled = cells.getOrNull(iTitle + 6)?.text()?.trim()?.ifBlank { null } // "35 / 30"
+            // after "Enrolled" there is a blank column, then "Status"
+            val status   = cells.getOrNull(iTitle + 8)?.text()?.trim()?.ifBlank { null }
 
-            val tipo     = getCell(index, tds, "Tipo")?.text()?.trim()
-            val regione  = getCell(index, tds, "Regione")?.text()?.trim()?.ifBlank { null }
-            val partenza = parseDate(getCell(index, tds, "Partenza")?.text())
-            val rientro  = parseDate(getCell(index, tds, "Rientro")?.text())
-            val quota    = getCell(index, tds, "Quota")?.text()?.trim()?.ifBlank { null }
-            val locality = getCell(index, tds, "Località")?.text()?.trim()?.ifBlank { null }
-            val iscritti = getCell(index, tds, "Iscritti")?.text()?.trim()?.ifBlank { null }
-            val state    = getCell(index, tds, "Stato")?.text()?.trim()?.ifBlank { null }
-
-            BcEvent(
+            val event = BcEvent(
                 id = id,
-                type = tipo,
-                title = titolo,
-                region = regione,
-                startDate = partenza,
-                endDate = rientro,
-                fee = quota,
-                location = locality,
-                enrolled = iscritti,
-                status = state,
+                type = typeText,
+                title = title,
+                region = region,
+                startDate = start,
+                endDate = end,
+                fee = fee,
+                location = location,
+                enrolled = enrolled,
+                status = status,
                 detailUrl = detailUrl
             )
+            Timber.v("Parsed event: %s", event)
+            event
         }
     }
 
@@ -89,11 +112,15 @@ object HtmlParser {
 
     /** Returns the header line that contains "Title". */
     private fun headerRow(table: Element): Element? {
-        val allRows = table.select("thead tr, tr")
-        // prefer the line that contains a th "Title"
-        return allRows.firstOrNull { row ->
-            row.select("th").any { it.text().trim().equals("Titolo", ignoreCase = true) }
-        } ?: allRows.firstOrNull { it.select("th").isNotEmpty() }
+        // Only DIRECT header rows of the table
+        val theadRow = table.select("> thead > tr").firstOrNull()
+        val header = theadRow ?: table.select("> tr").firstOrNull { it.select("> th").isNotEmpty() }
+        // Of the candidates, prefer the one that contains "Title"
+        return when {
+            header == null -> null
+            header.select("> th").any { it.text().trim().equals("Titolo", true) } -> header
+            else -> header
+        }
     }
 
     /** Create the NameColumn → Index map starting ONLY from the identified header row. */
