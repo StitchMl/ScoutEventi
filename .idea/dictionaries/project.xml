@@ -2,6 +2,7 @@
   <dictionary name="project">
     <words>
       <w>amministrativo</w>
+      <w>annulla</w>
       <w>aperte</w>
       <w>arancione</w>
       <w>attuali</w>
@@ -14,6 +15,8 @@
       <w>città</w>
       <w>contatto</w>
       <w>dedup</w>
+      <w>deseleziona</w>
+      <w>disponibile</w>
       <w>disponibili</w>
       <w>esploratori</w>
       <w>eventi</w>
@@ -34,7 +37,11 @@
       <w>lupetti</w>
       <w>marche</w>
       <w>metodologico</w>
+      <w>momento</w>
+      <w>nessun</w>
+      <w>notifiche</w>
       <w>noviziato</w>
+      <w>nulla</w>
       <w>nuovi</w>
       <w>partenza</w>
       <w>piemonte</w>
@@ -44,18 +51,24 @@
       <w>regione</w>
       <w>reparto</w>
       <w>responsabili</w>
+      <w>riceverai</w>
       <w>rientro</w>
       <w>rosso</w>
+      <w>salva</w>
       <w>sardegna</w>
       <w>scadenza</w>
       <w>scolte</w>
       <w>scorzè</w>
+      <w>seleziona</w>
+      <w>selezioni</w>
       <w>stato</w>
       <w>tbody</w>
       <w>thead</w>
+      <w>tipi</w>
       <w>tipo</w>
       <w>titolo</w>
       <w>toscana</w>
+      <w>tutto</w>
       <w>unità</w>
     </words>
   </dictionary>

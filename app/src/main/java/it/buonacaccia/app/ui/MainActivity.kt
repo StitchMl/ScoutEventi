@@ -7,16 +7,51 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.annotation.RequiresApi
-import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.FilterList
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
-import androidx.compose.material3.*
-import androidx.compose.runtime.*
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.ExposedDropdownMenuBox
+import androidx.compose.material3.ExposedDropdownMenuDefaults
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Switch
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.material3.TopAppBar
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.unit.dp
 import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
@@ -24,13 +59,14 @@ import com.google.accompanist.swiperefresh.SwipeRefresh
 import com.google.accompanist.swiperefresh.rememberSwipeRefreshState
 import dagger.hilt.android.AndroidEntryPoint
 import it.buonacaccia.app.data.BcEvent
+import it.buonacaccia.app.data.EventStore
 import it.buonacaccia.app.ui.components.EventCard
 import it.buonacaccia.app.ui.theme.BuonaCacciaTheme
+import kotlinx.coroutines.launch
 
 @AndroidEntryPoint
 class MainActivity : ComponentActivity() {
 
-    // ------- NEW: launcher for permission. -------
     private val requestNotifPerm = registerForActivityResult(
         androidx.activity.result.contract.ActivityResultContracts.RequestPermission()
     ) { /* optional: react to the result */ }
@@ -49,7 +85,9 @@ class MainActivity : ComponentActivity() {
         }
 
         setContent {
-            BuonaCacciaTheme { MainScreen() }
+            BuonaCacciaTheme {
+                MainScreen()
+            }
         }
     }
 }
@@ -60,8 +98,26 @@ class MainActivity : ComponentActivity() {
 private fun MainScreen(
     vm: EventsViewModel = hiltViewModel()
 ) {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+
+    // Preferences: types selected for notifications
+    val interestedTypes by EventStore
+        .notifyTypesFlow(context)
+        .collectAsState(initial = emptySet())
+
     val state = vm.state
     val swipeState = rememberSwipeRefreshState(isRefreshing = state.loading)
+
+    // Multi-selection dialog types
+    var showTypesDialog by remember { mutableStateOf(false) }
+
+    // List of available types (derived from current events)
+    val availableTypes = remember(state.items) {
+        state.items.mapNotNull { it.type?.trim() }
+            .toSortedSet(String.CASE_INSENSITIVE_ORDER)
+            .toList()
+    }
 
     Scaffold(
         topBar = {
@@ -70,6 +126,9 @@ private fun MainScreen(
                 actions = {
                     IconButton(onClick = { vm.refresh() }) {
                         Icon(Icons.Default.Refresh, contentDescription = "Refresh")
+                    }
+                    IconButton(onClick = { showTypesDialog = true }) {
+                        Icon(Icons.Default.FilterList, contentDescription = "Tipi notifiche")
                     }
                 }
             )
@@ -123,6 +182,66 @@ private fun MainScreen(
                 }
             }
         }
+    }
+
+    if (showTypesDialog) {
+        var localSelection by remember(interestedTypes, availableTypes) {
+            mutableStateOf(interestedTypes.intersect(availableTypes.toSet()))
+        }
+
+        AlertDialog(
+            onDismissRequest = { showTypesDialog = false },
+            confirmButton = {
+                TextButton(onClick = {
+                    scope.launch { EventStore.setNotifyTypes(context, localSelection) }
+                    showTypesDialog = false
+                }) { Text("Salva") }
+            },
+            dismissButton = {
+                TextButton(onClick = { showTypesDialog = false }) { Text("Annulla") }
+            },
+            title = { Text("Tipi per le notifiche") },
+            text = {
+                if (availableTypes.isEmpty()) {
+                    Text("Nessun tipo disponibile al momento.")
+                } else {
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text(
+                            "Se non selezioni nulla, riceverai notifiche per tutti i tipi.",
+                            style = MaterialTheme.typography.bodySmall
+                        )
+                        @OptIn(ExperimentalLayoutApi::class)
+                        FlowRow(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            availableTypes.forEach { t ->
+                                val selected = t in localSelection
+                                FilterChip(
+                                    selected = selected,
+                                    onClick = {
+                                        localSelection = if (selected) localSelection - t else localSelection + t
+                                    },
+                                    label = { Text(t) }
+                                )
+                            }
+                        }
+                        val allSelected = localSelection.size == availableTypes.size && availableTypes.isNotEmpty()
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.End
+                        ) {
+                            TextButton(onClick = {
+                                localSelection = if (allSelected) emptySet() else availableTypes.toSet()
+                            }) {
+                                Text(if (allSelected) "Deseleziona tutto" else "Seleziona tutto")
+                            }
+                        }
+                    }
+                }
+            }
+        )
     }
 }
 

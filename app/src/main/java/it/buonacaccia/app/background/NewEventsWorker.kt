@@ -29,13 +29,36 @@ class NewEventsWorker(
 
             val known = EventStore.getKnownIds(applicationContext)
             val newIds = current - known
+
             if (newIds.isNotEmpty()) {
-                // titles of the new ones (show the first 5)
-                val titles = events.filter { it.id in newIds }.map { it.title }
-                Notifier.notifyNewEvents(applicationContext, titles)
-                EventStore.saveKnownIds(applicationContext, known + newIds)
+                // complete new events
+                val newEvents = events.filter { it.id in newIds }
+
+                // ⬇️ load favorite types from DataStore
+                val preferredTypes = EventStore.currentNotifyTypes(applicationContext)
+
+                // ⬇️ If you have no preferences, notify everything; otherwise only the types you choose
+                val filtered = if (preferredTypes.isEmpty()) {
+                    newEvents
+                } else {
+                    newEvents.filter { ev ->
+                        val t = ev.type?.trim().orEmpty()
+                        t.isNotEmpty() && preferredTypes.contains(t)
+                    }
+                }
+
+                if (filtered.isNotEmpty()) {
+                    Notifier.notifyNewEvents(
+                        applicationContext,
+                        filtered.map { it.title }
+                    )
+                    EventStore.saveKnownIds(applicationContext, known + filtered.mapNotNull { it.id }.toSet())
+                } else {
+                    // no notification, but still we save new IDs so they are not renotified
+                    EventStore.saveKnownIds(applicationContext, known + newIds)
+                }
             } else if (known.isEmpty()) {
-                // First run: we save the current state without notifying
+                // first startup: saves the current state without notifying
                 EventStore.saveKnownIds(applicationContext, current)
             }
             Result.success()
