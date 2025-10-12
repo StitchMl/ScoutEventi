@@ -5,9 +5,8 @@ import androidx.annotation.RequiresApi
 import org.jsoup.Jsoup
 import org.jsoup.nodes.Document
 import org.jsoup.nodes.Element
-import timber.log.Timber
 import java.net.URLDecoder
-import java.nio.charset.StandardCharsets
+import timber.log.Timber
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
 import java.util.Locale
@@ -139,7 +138,7 @@ object HtmlParser {
         if (q.isEmpty()) return null
         val params = q.split('&').mapNotNull {
             val parts = it.split('=', limit = 2)
-            if (parts.size == 2) parts[0] to URLDecoder.decode(parts[1], StandardCharsets.UTF_8) else null
+            if (parts.size == 2) parts[0] to URLDecoder.decode(parts[1], "UTF-8") else null
         }.toMap()
         return params["e"]
     }
