@@ -16,5 +16,6 @@ data class BcEvent(
     val enrolled: String?,      // es. "34/40"
     val status: String?,        // es. "Iscrizioni aperte"
     val detailUrl: String,
+    val statusColor: String? = null, // "green", "yellow", "dual", "red"
     val branch: Branch? = null
 )

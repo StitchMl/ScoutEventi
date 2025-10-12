@@ -95,6 +95,20 @@ object HtmlParser {
                 null -> null
             }
 
+            // Look for the status image (light_*.png) in the whole row
+            val statusImgSrc = cells
+                .select("img[src]")
+                .map { it.attr("src").lowercase(Locale.ROOT) }
+                .firstOrNull { it.contains("light_") }
+
+            val statusColor = when {
+                statusImgSrc?.contains("light_green") == true -> "green"   // many places
+                statusImgSrc?.contains("light_yellow") == true -> "yellow" // almost full
+                statusImgSrc?.contains("light_dual") == true -> "dual"     // waiting list
+                statusImgSrc?.contains("light_red") == true -> "red"       // registrations closed
+                else -> null
+            }
+
             val event = BcEvent(
                 id = id,
                 type = effectiveType,
@@ -106,6 +120,7 @@ object HtmlParser {
                 location = location,
                 enrolled = enrolled,
                 status = status,
+                statusColor = statusColor,
                 detailUrl = detailUrl,
                 branch = branch
             )

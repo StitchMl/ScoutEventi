@@ -1,6 +1,7 @@
 package it.buonacaccia.app.ui.components
 
 import android.content.Intent
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -42,6 +43,13 @@ fun EventCard(ev: BcEvent, modifier: Modifier = Modifier) {
     }
     val deadlineDisplay: String? = ev.fee?.takeIf { looksLikeDate(it) }
     val enrolledDisplay: String? = ev.enrolled?.takeIf { !looksLikeMoney(it) }
+    val color = when (ev.statusColor) {
+        "green" -> Color(0xFF4CAF50)   // verde
+        "yellow" -> Color(0xFFFFC107)  // giallo/arancione
+        "dual" -> Color(0xFF9C27B0)    // viola (waiting list)
+        "red" -> Color(0xFFF44336)     // rosso
+        else -> MaterialTheme.colorScheme.outlineVariant
+    }
 
     Card(
         modifier = modifier
@@ -49,7 +57,9 @@ fun EventCard(ev: BcEvent, modifier: Modifier = Modifier) {
             .clickable {
                 val i = Intent(Intent.ACTION_VIEW, ev.detailUrl.toUri())
                 ctx.startActivity(i)
-            },
+            }
+            .border(2.dp, color, RoundedCornerShape(12.dp)),
+        elevation = CardDefaults.cardElevation(defaultElevation = 4.dp),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
     ) {
         Column(Modifier.padding(16.dp)) {
