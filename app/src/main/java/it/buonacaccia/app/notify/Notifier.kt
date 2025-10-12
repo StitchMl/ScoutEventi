@@ -6,12 +6,14 @@ import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
-import android.graphics.Color
-import androidx.annotation.RequiresPermission
+import android.content.pm.PackageManager
+import android.os.Build
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
+import androidx.core.content.ContextCompat
 import it.buonacaccia.app.R
 import it.buonacaccia.app.ui.MainActivity
+import timber.log.Timber
 
 object Notifier {
     const val CHANNEL_ID = "new_events_channel"
@@ -26,39 +28,54 @@ object Notifier {
             NotificationManager.IMPORTANCE_DEFAULT
         ).apply {
             description = CHANNEL_DESC
-            enableLights(true)
-            lightColor = Color.MAGENTA
         }
         mgr.createNotificationChannel(ch)
     }
 
-    @RequiresPermission(Manifest.permission.POST_NOTIFICATIONS)
+    // ------- NEW: permit check -------
+    private fun canPostNotifications(ctx: Context): Boolean {
+        // If the user has disabled system-wide notifications.
+        if (!NotificationManagerCompat.from(ctx).areNotificationsEnabled()) return false
+
+        // From Android 13 (API 33) need runtime permission
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            ContextCompat.checkSelfPermission(
+                ctx, Manifest.permission.POST_NOTIFICATIONS
+            ) == PackageManager.PERMISSION_GRANTED
+        } else {
+            true
+        }
+    }
+
     fun notifyNewEvents(context: Context, titles: List<String>) {
         if (titles.isEmpty()) return
+        if (!canPostNotifications(context)) return  // no permission: going out
+
         ensureChannel(context)
 
-        // Tap -> after app
         val intent = Intent(context, MainActivity::class.java)
         val pi = PendingIntent.getActivity(
             context, 0, intent,
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
 
-        val summary = if (titles.size == 1) titles.first() else "${titles.size} nuovi eventi"
-        val inbox = NotificationCompat.InboxStyle().also { style ->
-            titles.take(5).forEach { style.addLine(it) }
-            if (titles.size > 5) style.addLine("…")
+        val text = if (titles.size == 1) titles.first()
+        else titles.take(5).joinToString("\n").let {
+            if (titles.size > 5) "$it\n…" else it
         }
 
         val notif = NotificationCompat.Builder(context, CHANNEL_ID)
-            .setSmallIcon(R.drawable.ic_launcher_background) // put a small icon in mipmap/drawable
-            .setContentTitle("BuonaCaccia")
-            .setContentText(summary)
-            .setStyle(inbox)
-            .setContentIntent(pi)
+            .setSmallIcon(R.drawable.ic_launcher_background) // use a valid small icon of your own
+            .setContentTitle("Nuovi eventi BuonaCaccia")
+            .setStyle(NotificationCompat.BigTextStyle().bigText(text))
             .setAutoCancel(true)
+            .setContentIntent(pi)
             .build()
 
-        NotificationManagerCompat.from(context).notify(1001, notif)
+        try {
+            NotificationManagerCompat.from(context).notify(1001, notif)
+        } catch (se: SecurityException) {
+            Timber.tag("Notifier").w(se, "Permission notifications denied: skip sending")
+        }
     }
 }

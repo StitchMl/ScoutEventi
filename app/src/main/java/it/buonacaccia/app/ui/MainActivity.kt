@@ -29,17 +29,27 @@ import it.buonacaccia.app.ui.theme.BuonaCacciaTheme
 
 @AndroidEntryPoint
 class MainActivity : ComponentActivity() {
+
+    // ------- NEW: launcher for permission. -------
+    private val requestNotifPerm = registerForActivityResult(
+        androidx.activity.result.contract.ActivityResultContracts.RequestPermission()
+    ) { /* optional: react to the result */ }
+
     @RequiresApi(Build.VERSION_CODES.TIRAMISU)
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        val pm = checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS)
-        if (pm != android.content.pm.PackageManager.PERMISSION_GRANTED) {
-            requestPermissions(arrayOf(android.Manifest.permission.POST_NOTIFICATIONS), 100)
+
+        // Ask permission only on API 33+
+        val granted = androidx.core.content.ContextCompat.checkSelfPermission(
+            this, android.Manifest.permission.POST_NOTIFICATIONS
+        ) == android.content.pm.PackageManager.PERMISSION_GRANTED
+
+        if (!granted) {
+            requestNotifPerm.launch(android.Manifest.permission.POST_NOTIFICATIONS)
         }
+
         setContent {
-            BuonaCacciaTheme {
-                MainScreen()
-            }
+            BuonaCacciaTheme { MainScreen() }
         }
     }
 }
