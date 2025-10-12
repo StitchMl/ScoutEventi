@@ -90,7 +90,9 @@ private fun MainScreen(
                 selectedRegion = state.region ?: "Tutte",
                 onRegionChange = { vm.onRegionChange(if (it == "Tutte") null else it) },
                 selectedUnit = state.unit,
-                onUnitChange = vm::onUnitChange
+                onUnitChange = vm::onUnitChange,
+                onlyOpen = state.onlyOpen,                     // 🆕
+                onOnlyOpenChange = vm::onOnlyOpenChange        // 🆕
             )
 
             if (state.error != null) {
@@ -153,7 +155,9 @@ private fun FiltersRow(
     selectedRegion: String,
     onRegionChange: (String) -> Unit,
     selectedUnit: UnitFilter,
-    onUnitChange: (UnitFilter) -> Unit
+    onUnitChange: (UnitFilter) -> Unit,
+    onlyOpen: Boolean,                         // 🆕
+    onOnlyOpenChange: (Boolean) -> Unit        // 🆕
 ) {
     Row(
         Modifier
@@ -223,5 +227,16 @@ private fun FiltersRow(
                 }
             }
         }
+    }
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier.padding(horizontal = 16.dp)
+    ) {
+        Text("Solo iscrivibili")
+        Spacer(Modifier.width(8.dp))
+        Switch(
+            checked = onlyOpen,
+            onCheckedChange = onOnlyOpenChange
+        )
     }
 }

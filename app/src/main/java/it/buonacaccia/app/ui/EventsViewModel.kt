@@ -23,7 +23,8 @@ data class EventsUiState(
     val error: String? = null,
     val query: String = "",
     val region: String? = null,           // null = tutte
-    val unit: UnitFilter = UnitFilter.TUTTE
+    val unit: UnitFilter = UnitFilter.TUTTE,
+    val onlyOpen: Boolean = false
 )
 
 private val IT_REGIONS = listOf(
@@ -32,7 +33,7 @@ private val IT_REGIONS = listOf(
     "Sicilia","Toscana","Trentino-Alto Adige","Umbria","Valle d'Aosta","Veneto",
     // short/common forms
     "Emilia Romagna","Friuli Venezia Giulia","Trentino","Alto Adige","Val d'Aosta"
-).sortedBy { it.length }.reversed() // prima i nomi più lunghi per match più stabili
+).sortedBy { it.length }.reversed() // Longer names first for more stable matches
 
 @RequiresApi(Build.VERSION_CODES.TIRAMISU)
 @HiltViewModel
@@ -61,6 +62,9 @@ class EventsViewModel @Inject constructor(
     fun onQueryChange(q: String) { state = state.copy(query = q) }
     fun onRegionChange(r: String?) { state = state.copy(region = r) }
     fun onUnitChange(u: UnitFilter) { state = state.copy(unit = u) }
+    fun onOnlyOpenChange(enabled: Boolean) {
+        state = state.copy(onlyOpen = enabled)
+    }
 
     /** Attempt to get region from ev.region, otherwise from location/title */
     private fun guessRegion(ev: BcEvent): String? {
@@ -97,10 +101,15 @@ class EventsViewModel @Inject constructor(
                     when (state.unit) {
                         UnitFilter.TUTTE -> true
                         UnitFilter.BRANCO  -> ev.branch == Branch.LC
-                        UnitFilter.REPARTO  -> ev.branch == Branch.EG
-                        UnitFilter.CLAN  -> ev.branch == Branch.RS
-                        UnitFilter.CAPI-> ev.branch == Branch.CAPI
+                        UnitFilter.REPARTO -> ev.branch == Branch.EG
+                        UnitFilter.CLAN    -> ev.branch == Branch.RS
+                        UnitFilter.CAPI    -> ev.branch == Branch.CAPI
                     }
+                }
+                .filter { ev ->                       // 🆕 apply "enrollable only" filter
+                    if (state.onlyOpen)
+                        ev.statusColor == "green" || ev.statusColor == "yellow"
+                    else true
                 }
                 .toList()
         }
