@@ -5,29 +5,36 @@ import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.stringSetPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 
 private val Context.dataStore by preferencesDataStore("bc_prefs")
 
 object EventStore {
-    private val KEY_KNOWN_IDS = stringSetPreferencesKey("known_event_ids")
+    private val KEY_SEEN_IDS = stringSetPreferencesKey("seen_ids")
     private val KEY_NOTIFY_TYPES = stringSetPreferencesKey("notify_types")
 
-    fun notifyTypesFlow(context: Context): Flow<Set<String>> =
-        context.dataStore.data.map { prefs -> prefs[KEY_NOTIFY_TYPES] ?: emptySet() }
+    /** IDs of events already seen (persistent) */
+    fun seenIdsFlow(ctx: Context): Flow<Set<String>> =
+        ctx.dataStore.data.map { it[KEY_SEEN_IDS] ?: emptySet() }
 
-    suspend fun setNotifyTypes(context: Context, types: Set<String>) {
-        context.dataStore.edit { it[KEY_NOTIFY_TYPES] = types }
+    /** Adds the past ids to the set */
+    suspend fun addSeenIds(ctx: Context, ids: Set<String>) {
+        ctx.dataStore.edit { pref ->
+            val cur = pref[KEY_SEEN_IDS] ?: emptySet()
+            pref[KEY_SEEN_IDS] = cur + ids
+        }
     }
 
-    suspend fun currentNotifyTypes(context: Context): Set<String> = notifyTypesFlow(context).first()
-    suspend fun getKnownIds(context: Context): Set<String> {
-        val prefs = context.dataStore.data.first()
-        return prefs[KEY_KNOWN_IDS] ?: emptySet()
+    /** Replaces the whole set (useful in test/reset) */
+    suspend fun setSeenIds(ctx: Context, ids: Set<String>) {
+        ctx.dataStore.edit { it[KEY_SEEN_IDS] = ids }
     }
 
-    suspend fun saveKnownIds(context: Context, ids: Set<String>) {
-        context.dataStore.edit { it[KEY_KNOWN_IDS] = ids }
+    /** Selected types for notifications. Blank = all. */
+    fun notifyTypesFlow(ctx: Context): Flow<Set<String>> =
+        ctx.dataStore.data.map { it[KEY_NOTIFY_TYPES] ?: emptySet() }
+
+    suspend fun setNotifyTypes(ctx: Context, types: Set<String>) {
+        ctx.dataStore.edit { it[KEY_NOTIFY_TYPES] = types }
     }
 }

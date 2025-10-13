@@ -4,4 +4,5 @@
     <string name="open_on_site">Apri su BuonaCaccia</string>
     <string name="retry">Riprova</string>
     <string name="empty">Nessun evento trovato</string>
+    <string name="channel_new_events">Nuovi eventi BuonaCaccia</string>
 </resources>

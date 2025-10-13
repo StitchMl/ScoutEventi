@@ -3,79 +3,63 @@ package it.buonacaccia.app.notify
 import android.Manifest
 import android.app.NotificationChannel
 import android.app.NotificationManager
-import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
+import androidx.core.app.ActivityCompat
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
-import androidx.core.content.ContextCompat
+import androidx.core.net.toUri
 import it.buonacaccia.app.R
-import it.buonacaccia.app.ui.MainActivity
-import timber.log.Timber
+import it.buonacaccia.app.data.BcEvent
 
 object Notifier {
-    const val CHANNEL_ID = "new_events_channel"
-    private const val CHANNEL_NAME = "Nuovi eventi BuonaCaccia"
-    private const val CHANNEL_DESC = "Alerts when new events appear"
+    private const val CHANNEL_ID = "new_events"
 
-    fun ensureChannel(context: Context) {
-        val mgr = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-        val ch = NotificationChannel(
-            CHANNEL_ID,
-            CHANNEL_NAME,
-            NotificationManager.IMPORTANCE_DEFAULT
-        ).apply {
-            description = CHANNEL_DESC
-        }
-        mgr.createNotificationChannel(ch)
+    fun ensureChannel(ctx: Context) {
+        val nm = ctx.getSystemService(NotificationManager::class.java)
+        nm?.createNotificationChannel(
+            NotificationChannel(
+                CHANNEL_ID,
+                ctx.getString(R.string.channel_new_events),
+                NotificationManager.IMPORTANCE_DEFAULT
+            )
+        )
     }
 
-    // ------- NEW: permit check -------
-    private fun canPostNotifications(ctx: Context): Boolean {
-        // If the user has disabled system-wide notifications.
-        if (!NotificationManagerCompat.from(ctx).areNotificationsEnabled()) return false
-
-        // From Android 13 (API 33) need runtime permission
-        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            ContextCompat.checkSelfPermission(
-                ctx, Manifest.permission.POST_NOTIFICATIONS
-            ) == PackageManager.PERMISSION_GRANTED
-        } else {
-            true
+    /** Single event notification, with notification ID = event id (if available) */
+    fun notifyNewEvent(ctx: Context, ev: BcEvent) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            if (ActivityCompat.checkSelfPermission(ctx, Manifest.permission.POST_NOTIFICATIONS)
+                != PackageManager.PERMISSION_GRANTED
+            ) return
         }
-    }
 
-    fun notifyNewEvents(context: Context, titles: List<String>) {
-        if (titles.isEmpty()) return
-        if (!canPostNotifications(context)) return  // no permission: going out
+        val title = ev.title
+        val text = buildString {
+            ev.region?.let { append("$it • ") }
+            ev.startDate?.let { append(it) }
+        }
 
-        ensureChannel(context)
-
-        val intent = Intent(context, MainActivity::class.java)
-        val pi = PendingIntent.getActivity(
-            context, 0, intent,
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        // Open detail page if available
+        val intent = Intent(Intent.ACTION_VIEW).apply {
+            data = ev.detailUrl.toUri()
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        }
+        val pending = androidx.core.app.PendingIntentCompat.getActivity(
+            ctx, (ev.id ?: title.hashCode()).hashCode(), intent, 0, false
         )
 
-        val text = if (titles.size == 1) titles.first()
-        else titles.take(5).joinToString("\n").let {
-            if (titles.size > 5) "$it\n…" else it
-        }
-
-        val notif = NotificationCompat.Builder(context, CHANNEL_ID)
-            .setSmallIcon(R.drawable.ic_launcher_background) // use a valid small icon of your own
-            .setContentTitle("Nuovi eventi BuonaCaccia")
-            .setStyle(NotificationCompat.BigTextStyle().bigText(text))
+        val notif = NotificationCompat.Builder(ctx, CHANNEL_ID)
+            .setSmallIcon(R.drawable.ic_notification) // put your own icon
+            .setContentTitle(title)
+            .setContentText(text.takeIf { it.isNotBlank() })
             .setAutoCancel(true)
-            .setContentIntent(pi)
+            .setContentIntent(pending)
             .build()
 
-        try {
-            NotificationManagerCompat.from(context).notify(1001, notif)
-        } catch (se: SecurityException) {
-            Timber.tag("Notifier").w(se, "Permission notifications denied: skip sending")
-        }
+        NotificationManagerCompat.from(ctx)
+            .notify((ev.id ?: title.hashCode()).hashCode(), notif)
     }
 }

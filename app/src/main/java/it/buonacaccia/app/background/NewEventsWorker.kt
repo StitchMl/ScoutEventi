@@ -3,67 +3,54 @@ package it.buonacaccia.app.background
 import android.content.Context
 import android.os.Build
 import androidx.annotation.RequiresApi
+import androidx.hilt.work.HiltWorker
 import androidx.work.CoroutineWorker
 import androidx.work.WorkerParameters
+import dagger.assisted.Assisted
+import dagger.assisted.AssistedInject
 import it.buonacaccia.app.data.EventStore
-import it.buonacaccia.app.data.EventsRepository
 import it.buonacaccia.app.notify.Notifier
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
-import okhttp3.OkHttpClient
+import it.buonacaccia.app.data.EventsRepository
+import kotlinx.coroutines.flow.first
+import timber.log.Timber
 
-class NewEventsWorker(
-    appContext: Context,
-    params: WorkerParameters
+@HiltWorker
+class NewEventsWorker @AssistedInject constructor(
+    @Assisted appContext: Context,
+    @Assisted params: WorkerParameters,
+    private val repo: EventsRepository
 ) : CoroutineWorker(appContext, params) {
 
-    // Simple Repo without Hilt to avoid extra dependencies in the Worker
-    private val repo by lazy { EventsRepository(OkHttpClient()) }
-
     @RequiresApi(Build.VERSION_CODES.TIRAMISU)
-    override suspend fun doWork(): Result = withContext(Dispatchers.IO) {
-        try {
-            val events = repo.fetch(all = true)
-            val current = events.mapNotNull { it.id }.toSet()
-            if (current.isEmpty()) return@withContext Result.success()
+    override suspend fun doWork(): Result = try {
+        // 1) download events
+        val events = repo.fetch()
 
-            val known = EventStore.getKnownIds(applicationContext)
-            val newIds = current - known
+        // 2) get user preferences
+        val seen = EventStore.seenIdsFlow(applicationContext).first()
+        val interestedTypes = EventStore.notifyTypesFlow(applicationContext).first()
 
-            if (newIds.isNotEmpty()) {
-                // complete new events
-                val newEvents = events.filter { it.id in newIds }
-
-                // ⬇️ load favorite types from DataStore
-                val preferredTypes = EventStore.currentNotifyTypes(applicationContext)
-
-                // ⬇️ If you have no preferences, notify everything; otherwise only the types you choose
-                val filtered = if (preferredTypes.isEmpty()) {
-                    newEvents
-                } else {
-                    newEvents.filter { ev ->
-                        val t = ev.type?.trim().orEmpty()
-                        t.isNotEmpty() && preferredTypes.contains(t)
-                    }
-                }
-
-                if (filtered.isNotEmpty()) {
-                    Notifier.notifyNewEvents(
-                        applicationContext,
-                        filtered.map { it.title }
-                    )
-                    EventStore.saveKnownIds(applicationContext, known + filtered.mapNotNull { it.id }.toSet())
-                } else {
-                    // no notification, but still we save new IDs so they are not renotified
-                    EventStore.saveKnownIds(applicationContext, known + newIds)
-                }
-            } else if (known.isEmpty()) {
-                // first startup: saves the current state without notifying
-                EventStore.saveKnownIds(applicationContext, current)
+        // 3) filters by "new" and by interest types (if selected)
+        val fresh = events
+            .filter { e -> e.id != null && e.id !in seen }
+            .filter { e ->
+                interestedTypes.isEmpty() ||
+                        (e.type?.isNotBlank() == true && e.type in interestedTypes)
             }
-            Result.success()
-        } catch (_: Throwable) {
-            Result.retry()
+
+        if (fresh.isNotEmpty()) {
+            // 4) a notification for each event
+            fresh.forEach { e -> Notifier.notifyNewEvent(applicationContext, e) }
+
+            // 5) Add to list "already seen" so as not to repeat
+            val newIds = fresh.mapNotNull { it.id }.toSet()
+            EventStore.addSeenIds(applicationContext, newIds)
         }
+
+        Timber.d("Worker: new notified events=${fresh.size}")
+        Result.success()
+    } catch (t: Throwable) {
+        Timber.e(t, "Worker error")
+        Result.retry()
     }
 }
