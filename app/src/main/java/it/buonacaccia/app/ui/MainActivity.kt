@@ -23,7 +23,8 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.FilterList
+import androidx.compose.material.icons.filled.AddAlert
+import androidx.compose.material.icons.filled.AddLocation
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.AlertDialog
@@ -105,12 +106,16 @@ private fun MainScreen(
     val interestedTypes by EventStore
         .notifyTypesFlow(context)
         .collectAsState(initial = emptySet())
+    val interestedRegions by EventStore
+        .notifyRegionsFlow(context)
+        .collectAsState(initial = emptySet())
 
     val state = vm.state
     val swipeState = rememberSwipeRefreshState(isRefreshing = state.loading)
 
     // Multi-selection dialog types
     var showTypesDialog by remember { mutableStateOf(false) }
+    var showRegionsDialog by remember { mutableStateOf(false) }
 
     // List of available types (derived from current events)
     val availableTypes = remember(state.items) {
@@ -128,7 +133,10 @@ private fun MainScreen(
                         Icon(Icons.Default.Refresh, contentDescription = "Refresh")
                     }
                     IconButton(onClick = { showTypesDialog = true }) {
-                        Icon(Icons.Default.FilterList, contentDescription = "Tipi notifiche")
+                        Icon(Icons.Default.AddAlert, contentDescription = "Tipi notifiche")
+                    }
+                    IconButton(onClick = { showRegionsDialog = true }) {
+                        Icon(Icons.Default.AddLocation, contentDescription = "Regioni notifiche")
                     }
                 }
             )
@@ -237,6 +245,44 @@ private fun MainScreen(
                             }) {
                                 Text(if (allSelected) "Deseleziona tutto" else "Seleziona tutto")
                             }
+                        }
+                    }
+                }
+            }
+        )
+    }
+
+    if (showRegionsDialog) {
+        var localSelection by remember(interestedRegions) {
+            mutableStateOf(interestedRegions.intersect(vm.regions.toSet()))
+        }
+
+        AlertDialog(
+            onDismissRequest = { showRegionsDialog = false },
+            confirmButton = {
+                TextButton(onClick = {
+                    scope.launch { EventStore.setNotifyRegions(context, localSelection) }
+                    showRegionsDialog = false
+                }) { Text("Salva") }
+            },
+            dismissButton = {
+                TextButton(onClick = { showRegionsDialog = false }) { Text("Annulla") }
+            },
+            title = { Text("Regioni per le notifiche") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("Se non selezioni nulla, riceverai notifiche per tutte le regioni.")
+                    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        vm.regions.filter { it != "Tutte" }.forEach { r ->
+                            val selected = r in localSelection
+                            FilterChip(
+                                selected = selected,
+                                onClick = {
+                                    localSelection =
+                                        if (selected) localSelection - r else localSelection + r
+                                },
+                                label = { Text(r) }
+                            )
                         }
                     }
                 }

@@ -29,13 +29,14 @@ class NewEventsWorker @AssistedInject constructor(
         // 2) get user preferences
         val seen = EventStore.seenIdsFlow(applicationContext).first()
         val interestedTypes = EventStore.notifyTypesFlow(applicationContext).first()
+        val interestedRegions = EventStore.notifyRegionsFlow(applicationContext).first()
 
         // 3) filters by "new" and by interest types (if selected)
         val fresh = events
             .filter { e -> e.id != null && e.id !in seen }
             .filter { e ->
-                interestedTypes.isEmpty() ||
-                        (e.type?.isNotBlank() == true && e.type in interestedTypes)
+                (interestedTypes.isEmpty() || (e.type?.isNotBlank() == true && e.type in interestedTypes)) &&
+                        (interestedRegions.isEmpty() || (e.region?.isNotBlank() == true && e.region in interestedRegions))
             }
 
         if (fresh.isNotEmpty()) {

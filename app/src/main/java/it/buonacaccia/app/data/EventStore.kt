@@ -12,6 +12,15 @@ private val Context.dataStore by preferencesDataStore("bc_prefs")
 object EventStore {
     private val KEY_SEEN_IDS = stringSetPreferencesKey("seen_ids")
     private val KEY_NOTIFY_TYPES = stringSetPreferencesKey("notify_types")
+    private val KEY_NOTIFY_REGIONS = stringSetPreferencesKey("notify_regions")
+
+    /** Regions selected for notifications. Blank = all. */
+    fun notifyRegionsFlow(ctx: Context): Flow<Set<String>> =
+        ctx.dataStore.data.map { it[KEY_NOTIFY_REGIONS] ?: emptySet() }
+
+    suspend fun setNotifyRegions(ctx: Context, regions: Set<String>) {
+        ctx.dataStore.edit { it[KEY_NOTIFY_REGIONS] = regions }
+    }
 
     /** IDs of events already seen (persistent) */
     fun seenIdsFlow(ctx: Context): Flow<Set<String>> =
