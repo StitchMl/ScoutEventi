@@ -65,7 +65,14 @@ object HtmlParser {
             val id = extractEventId(detailUrl)
             // 5) reading RELATIVE to positions with respect to the title (coincides with the structure you pasted)
             val typeText = cells.getOrNull(0)?.text()?.trim()?.ifBlank { null }          // "ROSS", "CapiLC", ...
-            val region   = cells.getOrNull(iTitle + 1)?.text()?.trim()?.ifBlank { null } // "Piemonte"
+            var region = cells.getOrNull(iTitle + 1)?.text()?.trim()?.ifBlank { null }
+
+            // Normalize known abbreviations
+            region = when (region?.lowercase(Locale.ROOT)) {
+                "vda", "val d'aosta", "valdaosta", "valle d’aosta", "valle d'aosta" -> "Valle d'Aosta"
+                "emiro", "emilia romagna", "emilia-romagna" -> "Emilia-Romagna"
+                else -> region
+            }
             val start    = parseDate(cells.getOrNull(iTitle + 2)?.text())                // "23/10/2025"
             val end      = parseDate(cells.getOrNull(iTitle + 3)?.text())                // "28/10/2025"
             val fee      = cells.getOrNull(iTitle + 4)?.text()?.trim()?.ifBlank { null } // "20,00 €"
