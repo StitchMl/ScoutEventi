@@ -25,6 +25,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AddAlert
 import androidx.compose.material.icons.filled.AddLocation
+import androidx.compose.material.icons.filled.MusicOff
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.AlertDialog
@@ -116,6 +117,7 @@ private fun MainScreen(
     // Multi-selection dialog types
     var showTypesDialog by remember { mutableStateOf(false) }
     var showRegionsDialog by remember { mutableStateOf(false) }
+    var showMutedDialog by remember { mutableStateOf(false) }
 
     // List of available types (derived from current events)
     val availableTypes = remember(state.items) {
@@ -123,6 +125,7 @@ private fun MainScreen(
             .toSortedSet(String.CASE_INSENSITIVE_ORDER)
             .toList()
     }
+    val mutedTypes by EventStore.muteTypesFlow(context).collectAsState(initial = emptySet())
 
     Scaffold(
         topBar = {
@@ -137,6 +140,9 @@ private fun MainScreen(
                     }
                     IconButton(onClick = { showRegionsDialog = true }) {
                         Icon(Icons.Default.AddLocation, contentDescription = "Regioni notifiche")
+                    }
+                    IconButton(onClick = { showMutedDialog = true }) {
+                        Icon(Icons.Default.MusicOff, contentDescription = "Tipi silenziati")
                     }
                 }
             )
@@ -282,6 +288,48 @@ private fun MainScreen(
                                         if (selected) localSelection - r else localSelection + r
                                 },
                                 label = { Text(r) }
+                            )
+                        }
+                    }
+                }
+            }
+        )
+    }
+
+    if (showMutedDialog) {
+        val availableTypes = remember(state.items) {
+            state.items.mapNotNull { it.type?.trim() }
+                .toSortedSet(String.CASE_INSENSITIVE_ORDER)
+                .toList()
+        }
+        var localSelection by remember(mutedTypes, availableTypes) {
+            mutableStateOf(mutedTypes.intersect(availableTypes.toSet()))
+        }
+
+        AlertDialog(
+            onDismissRequest = { showMutedDialog = false },
+            confirmButton = {
+                TextButton(onClick = {
+                    scope.launch { EventStore.setMuteTypes(context, localSelection) }
+                    showMutedDialog = false
+                }) { Text("Salva") }
+            },
+            dismissButton = { TextButton(onClick = { showMutedDialog = false }) { Text("Annulla") } },
+            title = { Text("Tipi da silenziare") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("Lascia vuoto per ricevere notifiche di tutti i tipi (nuovi inclusi).",
+                        style = MaterialTheme.typography.bodySmall)
+                    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        availableTypes.forEach { t ->
+                            val selected = t in localSelection
+                            FilterChip(
+                                selected = selected,
+                                onClick = {
+                                    localSelection = if (selected) localSelection - t else localSelection + t
+                                },
+                                label = { Text(t) }
                             )
                         }
                     }

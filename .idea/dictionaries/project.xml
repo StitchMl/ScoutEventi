@@ -23,11 +23,13 @@
       <w>evento</w>
       <w>formazione</w>
       <w>goodhunting</w>
+      <w>inclusi</w>
       <w>iscritti</w>
       <w>iscrivibili</w>
       <w>iscrizioni</w>
       <w>isrg</w>
       <w>ivrea</w>
+      <w>lascia</w>
       <w>lato</w>
       <w>localita</w>
       <w>località</w>
@@ -53,7 +55,9 @@
       <w>regioni</w>
       <w>reparto</w>
       <w>responsabili</w>
+      <w>retrocompat</w>
       <w>riceverai</w>
+      <w>ricevere</w>
       <w>rientro</w>
       <w>rosso</w>
       <w>salva</w>
@@ -63,6 +67,8 @@
       <w>scorzè</w>
       <w>seleziona</w>
       <w>selezioni</w>
+      <w>silenziare</w>
+      <w>silenziati</w>
       <w>stato</w>
       <w>tbody</w>
       <w>thead</w>
@@ -72,6 +78,7 @@
       <w>toscana</w>
       <w>tutto</w>
       <w>unità</w>
+      <w>vuoto</w>
     </words>
   </dictionary>
 </component>
