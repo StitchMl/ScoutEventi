@@ -2,6 +2,8 @@
 
 package it.buonacaccia.app.ui
 
+import android.Manifest
+import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
@@ -25,7 +27,6 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AddAlert
 import androidx.compose.material.icons.filled.AddLocation
-import androidx.compose.material.icons.filled.MusicOff
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.AlertDialog
@@ -56,17 +57,15 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.unit.dp
-import androidx.hilt.lifecycle.viewmodel.compose.hiltViewModel
 import com.google.accompanist.swiperefresh.SwipeRefresh
 import com.google.accompanist.swiperefresh.rememberSwipeRefreshState
-import dagger.hilt.android.AndroidEntryPoint
 import it.buonacaccia.app.data.BcEvent
 import it.buonacaccia.app.data.EventStore
 import it.buonacaccia.app.ui.components.EventCard
 import it.buonacaccia.app.ui.theme.BuonaCacciaTheme
 import kotlinx.coroutines.launch
+import org.koin.androidx.compose.koinViewModel
 
-@AndroidEntryPoint
 class MainActivity : ComponentActivity() {
 
     private val requestNotifPerm = registerForActivityResult(
@@ -76,14 +75,17 @@ class MainActivity : ComponentActivity() {
     @RequiresApi(Build.VERSION_CODES.TIRAMISU)
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        if (checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
+            requestPermissions(arrayOf(Manifest.permission.POST_NOTIFICATIONS), 1001)
+        }
 
         // Ask permission only on API 33+
         val granted = androidx.core.content.ContextCompat.checkSelfPermission(
-            this, android.Manifest.permission.POST_NOTIFICATIONS
-        ) == android.content.pm.PackageManager.PERMISSION_GRANTED
+            this, Manifest.permission.POST_NOTIFICATIONS
+        ) == PackageManager.PERMISSION_GRANTED
 
         if (!granted) {
-            requestNotifPerm.launch(android.Manifest.permission.POST_NOTIFICATIONS)
+            requestNotifPerm.launch(Manifest.permission.POST_NOTIFICATIONS)
         }
 
         setContent {
@@ -94,11 +96,12 @@ class MainActivity : ComponentActivity() {
     }
 }
 
+enum class NotifyMode { ALLOWLIST, DENYLIST }
 @OptIn(ExperimentalMaterial3Api::class)
 @RequiresApi(Build.VERSION_CODES.TIRAMISU)
 @Composable
 private fun MainScreen(
-    vm: EventsViewModel = hiltViewModel()
+    vm: EventsViewModel = koinViewModel()
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -117,7 +120,6 @@ private fun MainScreen(
     // Multi-selection dialog types
     var showTypesDialog by remember { mutableStateOf(false) }
     var showRegionsDialog by remember { mutableStateOf(false) }
-    var showMutedDialog by remember { mutableStateOf(false) }
 
     // List of available types (derived from current events)
     val availableTypes = remember(state.items) {
@@ -136,13 +138,10 @@ private fun MainScreen(
                         Icon(Icons.Default.Refresh, contentDescription = "Refresh")
                     }
                     IconButton(onClick = { showTypesDialog = true }) {
-                        Icon(Icons.Default.AddAlert, contentDescription = "Tipi notifiche")
+                        Icon(Icons.Default.AddAlert, contentDescription = "Filtri notifiche")
                     }
                     IconButton(onClick = { showRegionsDialog = true }) {
                         Icon(Icons.Default.AddLocation, contentDescription = "Regioni notifiche")
-                    }
-                    IconButton(onClick = { showMutedDialog = true }) {
-                        Icon(Icons.Default.MusicOff, contentDescription = "Tipi silenziati")
                     }
                 }
             )
@@ -199,58 +198,99 @@ private fun MainScreen(
     }
 
     if (showTypesDialog) {
-        var localSelection by remember(interestedTypes, availableTypes) {
-            mutableStateOf(interestedTypes.intersect(availableTypes.toSet()))
+        // Initial mode: if there is an active denylist, start from DENYLIST; otherwise ALLOWLIST
+        var mode by remember(interestedTypes, mutedTypes) {
+            mutableStateOf(if (mutedTypes.isNotEmpty()) NotifyMode.DENYLIST else NotifyMode.ALLOWLIST)
+        }
+
+        // Initial selection consistent with the current mode
+        var localSelection by remember(interestedTypes, mutedTypes, availableTypes) {
+            mutableStateOf(
+                (if (mode == NotifyMode.DENYLIST) mutedTypes else interestedTypes)
+                    .intersect(availableTypes.toSet())
+            )
         }
 
         AlertDialog(
             onDismissRequest = { showTypesDialog = false },
             confirmButton = {
                 TextButton(onClick = {
-                    scope.launch { EventStore.setNotifyTypes(context, localSelection) }
+                    scope.launch {
+                        when (mode) {
+                            NotifyMode.ALLOWLIST -> {
+                                EventStore.setNotifyTypes(context, localSelection)
+                                EventStore.setMuteTypes(context, emptySet())    // empty the other set
+                            }
+                            NotifyMode.DENYLIST -> {
+                                EventStore.setMuteTypes(context, localSelection)
+                                EventStore.setNotifyTypes(context, emptySet())   // empty the other set
+                            }
+                        }
+                    }
                     showTypesDialog = false
                 }) { Text("Salva") }
             },
-            dismissButton = {
-                TextButton(onClick = { showTypesDialog = false }) { Text("Annulla") }
-            },
-            title = { Text("Tipi per le notifiche") },
+            dismissButton = { TextButton(onClick = { showTypesDialog = false }) { Text("Annulla") } },
+            title = { Text("Filtri notifiche (tipi)") },
             text = {
-                if (availableTypes.isEmpty()) {
-                    Text("Nessun tipo disponibile al momento.")
-                } else {
-                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Text(
-                            "Se non selezioni nulla, riceverai notifiche per tutti i tipi.",
-                            style = MaterialTheme.typography.bodySmall
+                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+
+                    // Toggle mode (exclusive choice)
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        FilterChip(
+                            selected = mode == NotifyMode.ALLOWLIST,
+                            onClick = {
+                                mode = NotifyMode.ALLOWLIST
+                                localSelection = interestedTypes.intersect(availableTypes.toSet())
+                            },
+                            label = { Text("Consenti solo") }
                         )
-                        @OptIn(ExperimentalLayoutApi::class)
-                        FlowRow(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp),
-                            verticalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            availableTypes.forEach { t ->
-                                val selected = t in localSelection
-                                FilterChip(
-                                    selected = selected,
-                                    onClick = {
-                                        localSelection = if (selected) localSelection - t else localSelection + t
-                                    },
-                                    label = { Text(t) }
-                                )
-                            }
+                        FilterChip(
+                            selected = mode == NotifyMode.DENYLIST,
+                            onClick = {
+                                mode = NotifyMode.DENYLIST
+                                localSelection = mutedTypes.intersect(availableTypes.toSet())
+                            },
+                            label = { Text("Escludi") }
+                        )
+                    }
+
+                    Text(
+                        when (mode) {
+                            NotifyMode.ALLOWLIST ->
+                                "Riceverai notifiche solo per i tipi selezionati. Se non selezioni nulla, riceverai notifiche per tutti i tipi (inclusi nuovi)."
+                            NotifyMode.DENYLIST  ->
+                                "Riceverai notifiche per tutti i tipi tranne quelli selezionati. Se non selezioni nulla, riceverai notifiche per tutti i tipi."
+                        },
+                        style = MaterialTheme.typography.bodySmall
+                    )
+
+                    // Chips types available
+                    @OptIn(ExperimentalLayoutApi::class)
+                    FlowRow(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        availableTypes.forEach { t ->
+                            val selected = t in localSelection
+                            FilterChip(
+                                selected = selected,
+                                onClick = {
+                                    localSelection = if (selected) localSelection - t else localSelection + t
+                                },
+                                label = { Text(t) }
+                            )
                         }
-                        val allSelected = localSelection.size == availableTypes.size && availableTypes.isNotEmpty()
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.End
-                        ) {
-                            TextButton(onClick = {
-                                localSelection = if (allSelected) emptySet() else availableTypes.toSet()
-                            }) {
-                                Text(if (allSelected) "Deseleziona tutto" else "Seleziona tutto")
-                            }
+                    }
+
+                    // Select/Deselect All
+                    val allSelected = localSelection.size == availableTypes.size && availableTypes.isNotEmpty()
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                        TextButton(onClick = {
+                            localSelection = if (allSelected) emptySet() else availableTypes.toSet()
+                        }) {
+                            Text(if (allSelected) "Deseleziona tutto" else "Seleziona tutto")
                         }
                     }
                 }
@@ -288,48 +328,6 @@ private fun MainScreen(
                                         if (selected) localSelection - r else localSelection + r
                                 },
                                 label = { Text(r) }
-                            )
-                        }
-                    }
-                }
-            }
-        )
-    }
-
-    if (showMutedDialog) {
-        val availableTypes = remember(state.items) {
-            state.items.mapNotNull { it.type?.trim() }
-                .toSortedSet(String.CASE_INSENSITIVE_ORDER)
-                .toList()
-        }
-        var localSelection by remember(mutedTypes, availableTypes) {
-            mutableStateOf(mutedTypes.intersect(availableTypes.toSet()))
-        }
-
-        AlertDialog(
-            onDismissRequest = { showMutedDialog = false },
-            confirmButton = {
-                TextButton(onClick = {
-                    scope.launch { EventStore.setMuteTypes(context, localSelection) }
-                    showMutedDialog = false
-                }) { Text("Salva") }
-            },
-            dismissButton = { TextButton(onClick = { showMutedDialog = false }) { Text("Annulla") } },
-            title = { Text("Tipi da silenziare") },
-            text = {
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text("Lascia vuoto per ricevere notifiche di tutti i tipi (nuovi inclusi).",
-                        style = MaterialTheme.typography.bodySmall)
-                    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        availableTypes.forEach { t ->
-                            val selected = t in localSelection
-                            FilterChip(
-                                selected = selected,
-                                onClick = {
-                                    localSelection = if (selected) localSelection - t else localSelection + t
-                                },
-                                label = { Text(t) }
                             )
                         }
                     }

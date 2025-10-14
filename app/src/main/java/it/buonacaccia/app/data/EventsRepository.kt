@@ -6,11 +6,9 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
 import okhttp3.Request
-import javax.inject.Inject
-import javax.inject.Singleton
+import timber.log.Timber
 
-@Singleton
-class EventsRepository @Inject constructor(
+class EventsRepository(
     private val client: OkHttpClient
 ) {
     private val base = "https://buonacaccia.net/Events.aspx"
@@ -19,11 +17,31 @@ class EventsRepository @Inject constructor(
     suspend fun fetch(all: Boolean = true, queryParams: Map<String, String> = emptyMap()): List<BcEvent> =
         withContext(Dispatchers.IO) {
             val url = buildUrl(all, queryParams)
+            Timber.d("EventsRepository.fetch url=%s", url)
             val req = Request.Builder().url(url).get().build()
             client.newCall(req).execute().use { resp ->
                 val body = resp.body.string()
+                Timber.d(
+                    "EventsRepository.fetch resp=%s bytes=%d",
+                    resp.code, body.length
+                )
                 if (!resp.isSuccessful || body.isBlank()) return@use emptyList()
                 HtmlParser.parseEvents(body, base)
+            }
+        }
+
+    @RequiresApi(Build.VERSION_CODES.TIRAMISU)
+    suspend fun fetchDetail(detailUrl: String): String =
+        withContext(Dispatchers.IO) {
+            Timber.d("EventsRepository.fetchDetail url=%s", detailUrl)
+            val req = Request.Builder().url(detailUrl).get().build()
+            client.newCall(req).execute().use { resp ->
+                val text = resp.body.string()
+                Timber.d(
+                    "EventsRepository.fetchDetail resp=%s bytes=%d",
+                    resp.code, text.length
+                )
+                text
             }
         }
 

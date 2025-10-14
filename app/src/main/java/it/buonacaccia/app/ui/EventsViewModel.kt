@@ -7,13 +7,11 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import dagger.hilt.android.lifecycle.HiltViewModel
 import it.buonacaccia.app.data.BcEvent
 import it.buonacaccia.app.data.Branch
 import it.buonacaccia.app.data.EventsRepository
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
-import javax.inject.Inject
 
 enum class UnitFilter { TUTTE, BRANCO, REPARTO, CLAN, CAPI }
 
@@ -22,22 +20,21 @@ data class EventsUiState(
     val items: List<BcEvent> = emptyList(),
     val error: String? = null,
     val query: String = "",
-    val region: String? = null,           // null = tutte
+    val region: String? = null,
     val unit: UnitFilter = UnitFilter.TUTTE,
     val onlyOpen: Boolean = false
 )
 
 private val IT_REGIONS = listOf(
-    "Abruzzo","Basilicata","Calabria","Campania","Emilia-Romagna","Friuli-Venezia Giulia",
-    "Lazio","Liguria","Lombardia","Marche","Molise","Piemonte","Puglia","Sardegna",
-    "Sicilia","Toscana","Trentino-Alto Adige","Umbria","Valle d'Aosta","Veneto",
+    "Abruzzo", "Basilicata", "Calabria", "Campania", "Emilia-Romagna", "Friuli-Venezia Giulia",
+    "Lazio", "Liguria", "Lombardia", "Marche", "Molise", "Piemonte", "Puglia", "Sardegna",
+    "Sicilia", "Toscana", "Trentino-Alto Adige", "Umbria", "Valle d'Aosta", "Veneto",
     // short/common forms
-    "Emilia Romagna","Friuli Venezia Giulia","Trentino","Alto Adige","Val d'Aosta"
-).sortedBy { it.length }.reversed() // Longer names first for more stable matches
+    "Emilia Romagna", "Friuli Venezia Giulia", "Trentino", "Alto Adige", "Val d'Aosta"
+).sortedBy { it.length }.reversed()
 
 @RequiresApi(Build.VERSION_CODES.TIRAMISU)
-@HiltViewModel
-class EventsViewModel @Inject constructor(
+class EventsViewModel(
     private val repo: EventsRepository
 ) : ViewModel() {
 
@@ -46,7 +43,9 @@ class EventsViewModel @Inject constructor(
 
     private var loadJob: Job? = null
 
-    init { refresh() }
+    init {
+        refresh()
+    }
 
     @RequiresApi(Build.VERSION_CODES.TIRAMISU)
     fun refresh() {
@@ -62,18 +61,14 @@ class EventsViewModel @Inject constructor(
     fun onQueryChange(q: String) { state = state.copy(query = q) }
     fun onRegionChange(r: String?) { state = state.copy(region = r) }
     fun onUnitChange(u: UnitFilter) { state = state.copy(unit = u) }
-    fun onOnlyOpenChange(enabled: Boolean) {
-        state = state.copy(onlyOpen = enabled)
-    }
+    fun onOnlyOpenChange(enabled: Boolean) { state = state.copy(onlyOpen = enabled) }
 
-    /** Attempt to get region from ev.region, otherwise from location/title */
     private fun guessRegion(ev: BcEvent): String? {
         ev.region?.trim()?.takeIf { it.isNotEmpty() }?.let { return it }
         val hay = listOfNotNull(ev.location, ev.title).joinToString(" ").lowercase()
         return IT_REGIONS.firstOrNull { r -> hay.contains(r.lowercase()) }
     }
 
-    /** List regions really present in events (with "All" in the lead). */
     val regions: List<String> get() {
         val present = state.items.mapNotNull { guessRegion(it) }
             .toSortedSet(String.CASE_INSENSITIVE_ORDER)
@@ -100,13 +95,13 @@ class EventsViewModel @Inject constructor(
                 .filter { ev ->
                     when (state.unit) {
                         UnitFilter.TUTTE -> true
-                        UnitFilter.BRANCO  -> ev.branch == Branch.LC
+                        UnitFilter.BRANCO -> ev.branch == Branch.LC
                         UnitFilter.REPARTO -> ev.branch == Branch.EG
-                        UnitFilter.CLAN    -> ev.branch == Branch.RS
-                        UnitFilter.CAPI    -> ev.branch == Branch.CAPI
+                        UnitFilter.CLAN -> ev.branch == Branch.RS
+                        UnitFilter.CAPI -> ev.branch == Branch.CAPI
                     }
                 }
-                .filter { ev ->                       // 🆕 apply "enrollable only" filter
+                .filter { ev ->
                     if (state.onlyOpen)
                         ev.statusColor == "green" || ev.statusColor == "yellow"
                     else true

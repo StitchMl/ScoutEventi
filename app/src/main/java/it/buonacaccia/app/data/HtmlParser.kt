@@ -164,4 +164,32 @@ object HtmlParser {
         }.toMap()
         return params["e"]
     }
+
+    @RequiresApi(Build.VERSION_CODES.TIRAMISU)
+    fun parseSubscriptions(html: String): SubsWindow {
+        val doc = Jsoup.parse(html)
+        fun grab(id: String): LocalDate? = parseDate(doc.selectFirst("#$id")?.text())
+
+        val open  = grab("MainContent_EventFormView_lbSubsFrom")
+        val close = grab("MainContent_EventFormView_lbSubsTo")
+        val seats = doc.selectFirst("#MainContent_EventFormView_lbSeats")?.text()?.trim()
+        val taken = doc.selectFirst("#MainContent_EventFormView_lbTaken")?.text()?.trim()
+
+        Timber.d("SubsWindow extracted: opening=%s closing=%s seats=%s taken=%s",
+            open, close, seats, taken
+        )
+
+        if (open == null && close == null) {
+            Timber.w("SubsWindow: no opening/closing dates found in detail HTML.")
+        }
+
+        return SubsWindow(opening = open, closing = close, seats = seats, taken = taken)
+    }
+
+    data class SubsWindow(
+        val opening: LocalDate?,
+        val closing: LocalDate?,
+        val seats: String? = null,
+        val taken: String? = null
+    )
 }

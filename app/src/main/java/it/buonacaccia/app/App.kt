@@ -1,52 +1,91 @@
 package it.buonacaccia.app
 
 import android.app.Application
-import androidx.work.Constraints
-import androidx.work.ExistingPeriodicWorkPolicy
-import androidx.work.ExistingWorkPolicy
-import androidx.work.NetworkType
-import androidx.work.PeriodicWorkRequestBuilder
-import androidx.work.WorkManager
-import dagger.hilt.android.HiltAndroidApp
+import android.os.Build
+import androidx.annotation.RequiresApi
+import androidx.work.*
 import it.buonacaccia.app.background.NewEventsWorker
+import it.buonacaccia.app.background.SubscriptionsWorker
+import it.buonacaccia.app.data.EventsRepository
+import it.buonacaccia.app.di.networkModule
 import it.buonacaccia.app.notify.Notifier
+import it.buonacaccia.app.ui.EventsViewModel
+import org.koin.android.ext.koin.androidContext
+import org.koin.android.ext.koin.androidLogger
+import org.koin.androidx.viewmodel.dsl.viewModel
+import org.koin.androidx.workmanager.koin.workManagerFactory
+import org.koin.core.context.startKoin
+import org.koin.dsl.module
 import timber.log.Timber
 import java.util.concurrent.TimeUnit
 
-@HiltAndroidApp
-class App : Application() {
+class App : Application(), Configuration.Provider {
+
+    @RequiresApi(Build.VERSION_CODES.TIRAMISU)
     override fun onCreate() {
         super.onCreate()
 
-        // One-time "bootstrap" execution at app startup
-        val oneTime = androidx.work.OneTimeWorkRequestBuilder<NewEventsWorker>().build()
-        WorkManager.getInstance(this)
-            .enqueueUniqueWork(
-                "new_events_bootstrap",
-                ExistingWorkPolicy.REPLACE,
-                oneTime
-            )
+        Timber.plant(Timber.DebugTree())
 
-        if (BuildConfig.DEBUG) {
-            Timber.plant(Timber.DebugTree())
+        // --- Koin setup ---
+        val appModule = module {
+            single <Notifier> { Notifier }
+            single { EventsRepository(get()) }
+            viewModel { EventsViewModel(get()) }
         }
 
-        // Notification channel
+        startKoin {
+            androidLogger()
+            androidContext(this@App)
+            workManagerFactory()
+            modules(listOf(networkModule, appModule))
+        }
+
         Notifier.ensureChannel(this)
 
-        // WorkManager: checks for new events every 6 hours, only with network available
-        val constraints = Constraints.Builder()
-            .setRequiredNetworkType(NetworkType.CONNECTED)
+        // --- Worker Scheduling ---
+        scheduleWorkers()
+
+        Timber.d("Koin e WorkManager inizializzati correttamente")
+    }
+
+    private fun scheduleWorkers() {
+        val workManager = WorkManager.getInstance(this)
+
+        // ✅ Worker for new events every 6 hours
+        val newEventsWork = PeriodicWorkRequestBuilder<NewEventsWorker>(6, TimeUnit.HOURS)
+            .setConstraints(
+                Constraints.Builder()
+                    .setRequiredNetworkType(NetworkType.CONNECTED)
+                    .build()
+            )
             .build()
 
-        val workReq = PeriodicWorkRequestBuilder<NewEventsWorker>(6, TimeUnit.HOURS)
-            .setConstraints(constraints)
+        // ✅ Worker for enrollment reminder every 12 hours
+        val subscriptionsWork = PeriodicWorkRequestBuilder<SubscriptionsWorker>(12, TimeUnit.HOURS)
+            .setConstraints(
+                Constraints.Builder()
+                    .setRequiredNetworkType(NetworkType.CONNECTED)
+                    .build()
+            )
             .build()
 
-        WorkManager.getInstance(this).enqueueUniquePeriodicWork(
-            "new_events_checker",
+        // Plan ahead to avoid duplicates
+        workManager.enqueueUniquePeriodicWork(
+            "NewEventsWork",
             ExistingPeriodicWorkPolicy.UPDATE,
-            workReq
+            newEventsWork
+        )
+
+        workManager.enqueueUniquePeriodicWork(
+            "SubscriptionsWork",
+            ExistingPeriodicWorkPolicy.UPDATE,
+            subscriptionsWork
         )
     }
+
+    override val workManagerConfiguration: Configuration
+        get() = Configuration.Builder()
+            .setMinimumLoggingLevel(android.util.Log.INFO)
+            .build()
 }

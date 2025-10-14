@@ -1,9 +1,8 @@
 plugins {
-    id("com.android.application")
-    id("org.jetbrains.kotlin.android")
-    id("com.google.dagger.hilt.android")
-    kotlin("kapt")
-    id("org.jetbrains.kotlin.plugin.compose")
+    alias(libs.plugins.androidApplication)
+    alias(libs.plugins.kotlinAndroid)
+    alias(libs.plugins.compose)
+    alias(libs.plugins.ksp)
 }
 
 android {
@@ -31,46 +30,50 @@ android {
     }
 
     compileOptions {
-        sourceCompatibility = JavaVersion.VERSION_22
-        targetCompatibility = JavaVersion.VERSION_22
+        sourceCompatibility = JavaVersion.VERSION_17
+        targetCompatibility = JavaVersion.VERSION_17
     }
 
     buildFeatures {
         compose = true
         buildConfig = true
     }
-}
 
-kotlin {
-    jvmToolchain(22)
-    compilerOptions {
-        jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_22)
+    packaging {
+        jniLibs {
+            useLegacyPackaging = true
+        }
     }
 }
 
+kotlin {
+    jvmToolchain(17)
+}
+
 dependencies {
-    implementation(libs.androidx.compose.material3.material3)
-    implementation(libs.androidx.compose.foundation.layout)
-    implementation(libs.androidx.hilt.common)
     // Compose BOM
-    val composeBom = platform("androidx.compose:compose-bom:2024.10.01")
+    val composeBom = platform("androidx.compose:compose-bom:2024.05.00")
     implementation(composeBom)
     androidTestImplementation(composeBom)
 
+    // WorkManager
+    implementation(libs.androidx.work.runtime.ktx)
+    implementation(libs.koin.androidx.workmanager)
+
+    // UI - Compose
+    implementation(libs.androidx.compose.material3.material3)
+    implementation(libs.androidx.compose.foundation.layout)
     implementation(libs.androidx.activity.compose.v1110)
-    implementation(libs.androidx.compose.material3.material33)
     implementation(libs.androidx.compose.ui.ui3)
     implementation(libs.androidx.compose.ui.ui.tooling.preview3)
     debugImplementation(libs.androidx.compose.ui.ui.tooling3)
+    implementation(libs.androidx.compose.material.icons.core)
+    implementation(libs.androidx.compose.material.icons.extended)
 
+    // Lifecycle
     implementation(libs.androidx.lifecycle.runtime.ktx.v294)
     implementation(libs.androidx.lifecycle.viewmodel.compose)
-    implementation(libs.androidx.core.ktx.v1170)
-
-    // Hilt
-    implementation(libs.hilt.android)
-    kapt(libs.hilt.compiler)
-    implementation(libs.androidx.hilt.navigation.compose)
+    implementation(libs.koin.androidx.compose)
 
     // Network + Parsing
     implementation(libs.okhttp)
@@ -78,50 +81,20 @@ dependencies {
 
     // Utils
     implementation(libs.timber)
+    implementation(libs.androidx.browser)
 
-    // Pull-to-refresh (se lo usi)
+    // DataStore
+    implementation(libs.androidx.datastore.preferences)
+
+    // Pull-to-refresh
     implementation(libs.accompanist.swiperefresh)
 
+    // Core-ktx (already included by other dependencies, but good to have)
+    implementation(libs.androidx.core.ktx.v1170)
+
+    // Testing
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit.v130)
     androidTestImplementation(libs.androidx.espresso.core.v370)
     androidTestImplementation(libs.ui.test.junit4)
-    implementation(composeBom)
-    androidTestImplementation(composeBom)
-
-    implementation(libs.androidx.activity.compose.v1110)
-    implementation(libs.androidx.compose.material3.material34)
-    implementation(libs.androidx.compose.ui.ui4)
-    implementation(libs.androidx.compose.ui.ui.tooling.preview4)
-    debugImplementation(libs.androidx.compose.ui.ui.tooling4)
-
-    implementation(libs.androidx.lifecycle.runtime.ktx.v294)
-    implementation(libs.androidx.lifecycle.viewmodel.compose)
-
-    // Hilt
-    implementation(libs.hilt.android)
-    kapt(libs.hilt.compiler)
-    implementation(libs.androidx.hilt.navigation.compose)
-
-    // Accompanist SwipeRefresh
-    implementation(libs.accompanist.swiperefresh)
-
-    // Custom Tabs
-    implementation(libs.androidx.browser)
-
-    // WorkManager
-    implementation(libs.androidx.work.runtime.ktx.v291)
-
-    // Material icons (required for Icons.Default.*)
-    implementation(libs.androidx.compose.material.icons.core)
-    implementation(libs.androidx.compose.material.icons.extended)
-
-    // WorkManager
-    implementation(libs.androidx.work.runtime.ktx)
-
-    // DataStore (to store the IDs of events already seen)
-    implementation(libs.androidx.datastore.preferences)
-
-    // Notification compat (usually already transitive, but I make it explicit)
-    implementation(libs.androidx.core.ktx.v1170)
 }
