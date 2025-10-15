@@ -19,6 +19,7 @@ import android.Manifest
 import android.content.pm.PackageManager
 import androidx.core.content.ContextCompat
 import kotlinx.coroutines.flow.first
+import java.time.LocalTime
 
 class SubscriptionsWorker(
     appContext: Context,
@@ -51,16 +52,30 @@ class SubscriptionsWorker(
             ) == PackageManager.PERMISSION_GRANTED
 
             // 4) Calculates and sends reminders avoiding duplicates
-            for (ev in events) {
-                val startDate = ev.startDate ?: continue
-                val diff = ChronoUnit.DAYS.between(today, startDate)
+            val now = LocalTime.now()
+            val before9 = now.isBefore(LocalTime.of(9, 0))
 
-                val tag = when (diff) {
-                    1L -> "OPEN-1"
-                    0L -> "OPEN"
-                    -3L -> "CLOSE"
+            for (ev in events) {
+                val open = ev.subsOpenDate
+                val close = ev.subsCloseDate
+
+                val tag: String? = when {
+                    // 🆕 One week before the opening
+                    open != null && ChronoUnit.DAYS.between(today, open) == 7L -> "OPEN-7"
+
+                    // Day before opening
+                    open != null && ChronoUnit.DAYS.between(today, open) == 1L -> "OPEN-1"
+
+                    // Opening day itself, only before 09:00 am
+                    open != null && ChronoUnit.DAYS.between(today, open) == 0L && before9 -> "OPEN"
+
+                    // Day before closing
+                    close != null && ChronoUnit.DAYS.between(today, close) == 1L -> "CLOSE"
+
                     else -> null
-                } ?: continue
+                }
+
+                if (tag == null) continue
 
                 val key = "${ev.id}|$today|$tag"
                 if (key !in sent && perm) {

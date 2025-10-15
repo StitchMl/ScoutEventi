@@ -101,6 +101,12 @@ object Notifier {
 
         // ✅ Tipi forti: String, String, Int, String
         val (title: String, text: String, icon: Int, color: String) = when (tag) {
+            "OPEN-7" -> Quadruple(
+                "Tra una settimana aprono le iscrizioni",
+                "L’evento \"${event.title}\" aprirà le iscrizioni tra 7 giorni.",
+                R.drawable.ic_reminder_open,
+                "#4CAF50"
+            )
             "OPEN-1" -> Quadruple(
                 "Domani aprono le iscrizioni!",
                 "L’evento \"${event.title}\" apre domani.",

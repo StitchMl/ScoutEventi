@@ -1,10 +1,24 @@
-<vector xmlns:android="http://schemas.android.com/apk/res/android"
-    android:width="24dp"
-    android:height="24dp"
-    android:viewportWidth="24"
-    android:viewportHeight="24"
-    android:tint="#01BAEF">
-    <path
-        android:fillColor="@android:color/white"
-        android:pathData="M12,22C6.48,22 2,17.52 2,12s4.48,-10 10,-10 10,4.48 10,10 -4.48,10 -10,10zM13,7h-2v6h6v-2h-4z" />
-</vector>
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <!-- Level 1: App logo -->
+    <item android:drawable="@drawable/ic_launcher_foreground_inset" />
+
+    <!-- Level 2: Blue clock as badge -->
+    <item
+        android:width="20dp"
+        android:height="20dp"
+        android:gravity="bottom|right"
+        android:right="-6dp"
+        android:bottom="-6dp">
+        <vector
+            android:width="24dp"
+            android:height="24dp"
+            android:viewportWidth="24"
+            android:viewportHeight="24">
+            <path
+                android:fillColor="#01BAEF"
+                android:pathData="M12,22C6.48,22 2,17.52 2,12s4.48,-10 10,-10 10,4.48 10,10 -4.48,10 -10,10zM13,7h-2v6h6v-2h-4z"/>
+        </vector>
+    </item>
+
+</layer-list>
