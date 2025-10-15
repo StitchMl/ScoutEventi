@@ -27,6 +27,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AddAlert
 import androidx.compose.material.icons.filled.AddLocation
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.AlertDialog
@@ -88,9 +89,12 @@ class MainActivity : ComponentActivity() {
             requestNotifPerm.launch(Manifest.permission.POST_NOTIFICATIONS)
         }
 
+        val deepId = intent?.getStringExtra("open_event_id")
+        val deepTitle = intent?.getStringExtra("open_event_title")
+
         setContent {
             BuonaCacciaTheme {
-                MainScreen()
+                MainScreen(deepLinkEventId = deepId, deepLinkTitle = deepTitle)
             }
         }
     }
@@ -101,9 +105,12 @@ enum class NotifyMode { ALLOWLIST, DENYLIST }
 @RequiresApi(Build.VERSION_CODES.TIRAMISU)
 @Composable
 private fun MainScreen(
-    vm: EventsViewModel = koinViewModel()
+    vm: EventsViewModel = koinViewModel(),
+    deepLinkEventId: String? = null,
+    deepLinkTitle: String? = null
 ) {
     val context = LocalContext.current
+    val cached by EventStore.cachedEventsFlow(context).collectAsState(initial = emptyList())
     val scope = rememberCoroutineScope()
 
     // Preferences: types selected for notifications
@@ -115,6 +122,15 @@ private fun MainScreen(
         .collectAsState(initial = emptySet())
 
     val state = vm.state
+    LaunchedEffect(cached) {
+        if (cached.isNotEmpty()) vm.seedFromCache(cached)
+    }
+    LaunchedEffect(deepLinkEventId, deepLinkTitle) {
+        val title = deepLinkTitle?.takeIf { it.isNotBlank() }
+        if (title != null) {
+            vm.onQueryChange(title)
+        }
+    }
     val swipeState = rememberSwipeRefreshState(isRefreshing = state.loading)
 
     // Multi-selection dialog types
@@ -344,6 +360,7 @@ private fun SearchBarField(
 ) {
     var tf by remember { mutableStateOf(TextFieldValue(value)) }
     LaunchedEffect(value) { if (value != tf.text) tf = tf.copy(text = value) }
+
     OutlinedTextField(
         value = tf,
         onValueChange = {
@@ -351,7 +368,20 @@ private fun SearchBarField(
             onValueChange(it.text)
         },
         leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
-        placeholder = { Text("Search for events...") },
+        trailingIcon = {
+            if (tf.text.isNotEmpty()) {
+                IconButton(onClick = {
+                    tf = TextFieldValue("")
+                    onValueChange("")
+                }) {
+                    Icon(
+                        imageVector = Icons.Default.Close,
+                        contentDescription = "Clear search"
+                    )
+                }
+            }
+        },
+        placeholder = { Text("Cerca eventi...") },
         singleLine = true,
         modifier = Modifier
             .fillMaxWidth()

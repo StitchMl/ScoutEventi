@@ -55,6 +55,8 @@ object Notifier {
 
         val intent = Intent(context, MainActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
+            putExtra("open_event_id", event.id)
+            putExtra("open_event_title", event.title)
         }
 
         val pendingIntent = PendingIntent.getActivity(
@@ -85,7 +87,11 @@ object Notifier {
     fun notifySubscriptionReminder(context: Context, event: BcEvent, tag: String) {
         if (!NotificationManagerCompat.from(context).areNotificationsEnabled()) return
 
-        val intent = Intent(context, MainActivity::class.java)
+        val intent = Intent(context, MainActivity::class.java).apply {
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
+            putExtra("open_event_id", event.id)
+            putExtra("open_event_title", event.title)
+        }
         val pendingIntent = PendingIntent.getActivity(
             context,
             event.id?.toIntOrNull() ?: 0,

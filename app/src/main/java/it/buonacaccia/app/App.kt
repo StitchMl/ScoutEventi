@@ -12,7 +12,8 @@ import it.buonacaccia.app.notify.Notifier
 import it.buonacaccia.app.ui.EventsViewModel
 import org.koin.android.ext.koin.androidContext
 import org.koin.android.ext.koin.androidLogger
-import org.koin.androidx.viewmodel.dsl.viewModel
+import org.koin.core.module.dsl.singleOf
+import org.koin.core.module.dsl.viewModelOf
 import org.koin.androidx.workmanager.koin.workManagerFactory
 import org.koin.core.context.startKoin
 import org.koin.dsl.module
@@ -29,9 +30,9 @@ class App : Application(), Configuration.Provider {
 
         // --- Koin setup ---
         val appModule = module {
-            single <Notifier> { Notifier }
-            single { EventsRepository(get()) }
-            viewModel { EventsViewModel(get()) }
+            single<Notifier> { Notifier }
+            singleOf(::EventsRepository)
+            viewModelOf(::EventsViewModel)
         }
 
         startKoin {

@@ -7,11 +7,6 @@
 -keep class dagger.hilt.internal.processedrootsentinel.codegen.** { *; }
 -keep class hilt_aggregated_deps.** { *; }
 
-# Conserva SOLO le classi dell'app annotate da Hilt (poche unità, non centinaia)
--keep @dagger.hilt.android.HiltAndroidApp class *
--keep @dagger.hilt.android.AndroidEntryPoint class *
--keep @dagger.hilt.android.lifecycle.HiltViewModel class *
-
 # Evita warning per annotazioni javax (comune con Dagger/Hilt)
 -dontwarn javax.annotation.**
 

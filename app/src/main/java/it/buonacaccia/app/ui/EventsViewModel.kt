@@ -62,6 +62,11 @@ class EventsViewModel(
     fun onRegionChange(r: String?) { state = state.copy(region = r) }
     fun onUnitChange(u: UnitFilter) { state = state.copy(unit = u) }
     fun onOnlyOpenChange(enabled: Boolean) { state = state.copy(onlyOpen = enabled) }
+    fun seedFromCache(items: List<BcEvent>) {
+        if (items.isNotEmpty() && state.items.isEmpty()) {
+            state = state.copy(loading = false, items = items, error = null)
+        }
+    }
 
     private fun guessRegion(ev: BcEvent): String? {
         ev.region?.trim()?.takeIf { it.isNotEmpty() }?.let { return it }
