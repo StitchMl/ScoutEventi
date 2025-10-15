@@ -21,12 +21,33 @@ class EventsRepository(
             val req = Request.Builder().url(url).get().build()
             client.newCall(req).execute().use { resp ->
                 val body = resp.body.string()
-                Timber.d(
-                    "EventsRepository.fetch resp=%s bytes=%d",
-                    resp.code, body.length
-                )
+                Timber.d("EventsRepository.fetch resp=%s bytes=%d", resp.code, body.length)
                 if (!resp.isSuccessful || body.isBlank()) return@use emptyList()
-                HtmlParser.parseEvents(body, base)
+
+                // 1) parse base list
+                val baseEvents = HtmlParser.parseEvents(body, base)
+
+                // 2) enrich with enrollment dates taken from detailUrl
+                //    (sequential for simplicity/robustness; you can parallelize in the future)
+                val enriched = baseEvents.map { ev ->
+                    runCatching {
+                        val detailHtml = fetchDetail(ev.detailUrl)
+                        val subs = HtmlParser.parseSubscriptions(detailHtml)
+                        val copy = ev.copy(
+                            subsOpenDate = subs.opening,
+                            subsCloseDate = subs.closing
+                        )
+                        Timber.d(
+                            "Subs dates for id=%s title=%s open=%s close=%s",
+                            copy.id, copy.title, copy.subsOpenDate, copy.subsCloseDate
+                        )
+                        copy
+                    }.onFailure {
+                        Timber.w(it, "Unable to enrich event %s (%s)", ev.id, ev.detailUrl)
+                    }.getOrElse { ev } // in case of an error, returns the base event
+                }
+
+                enriched
             }
         }
 

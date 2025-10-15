@@ -53,7 +53,7 @@ class App : Application(), Configuration.Provider {
         val workManager = WorkManager.getInstance(this)
 
         // ✅ Worker for new events every 6 hours
-        val newEventsWork = PeriodicWorkRequestBuilder<NewEventsWorker>(6, TimeUnit.HOURS)
+        val newEventsWork = PeriodicWorkRequestBuilder<NewEventsWorker>(1, TimeUnit.HOURS)
             .setConstraints(
                 Constraints.Builder()
                     .setRequiredNetworkType(NetworkType.CONNECTED)
@@ -62,7 +62,7 @@ class App : Application(), Configuration.Provider {
             .build()
 
         // ✅ Worker for enrollment reminder every 12 hours
-        val subscriptionsWork = PeriodicWorkRequestBuilder<SubscriptionsWorker>(12, TimeUnit.HOURS)
+        val subscriptionsWork = PeriodicWorkRequestBuilder<SubscriptionsWorker>(1, TimeUnit.HOURS)
             .setConstraints(
                 Constraints.Builder()
                     .setRequiredNetworkType(NetworkType.CONNECTED)

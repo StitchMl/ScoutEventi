@@ -5,7 +5,7 @@ import java.time.LocalDate
 enum class Branch { LC, EG, RS, CAPI }
 
 data class BcEvent(
-    val id: String?,            // es. "12345" da event.aspx?e=12345 (if present)
+    val id: String?,
     val type: String?,
     val title: String,
     val region: String?,
@@ -13,9 +13,11 @@ data class BcEvent(
     val endDate: LocalDate?,
     val fee: String?,
     val location: String?,
-    val enrolled: String?,      // es. "34/40"
-    val status: String?,        // es. "Iscrizioni aperte"
+    val enrolled: String?,
+    val status: String?,
     val detailUrl: String,
-    val statusColor: String? = null, // "green", "yellow", "dual", "red"
-    val branch: Branch? = null
+    val statusColor: String? = null,
+    val branch: Branch? = null,
+    val subsOpenDate: LocalDate? = null,
+    val subsCloseDate: LocalDate? = null
 )
