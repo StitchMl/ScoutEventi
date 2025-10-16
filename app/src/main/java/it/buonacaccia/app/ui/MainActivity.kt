@@ -77,6 +77,7 @@ import it.buonacaccia.app.ui.components.EventCard
 import it.buonacaccia.app.ui.theme.BuonaCacciaTheme
 import kotlinx.coroutines.launch
 import org.koin.androidx.compose.koinViewModel
+import androidx.core.content.edit
 
 class MainActivity : ComponentActivity() {
 
@@ -90,11 +91,8 @@ class MainActivity : ComponentActivity() {
         if (checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
             requestPermissions(arrayOf(Manifest.permission.POST_NOTIFICATIONS), 1001)
         }
-        // 🆕 Request exclusion from battery optimization (once)
-        openBatteryOptimizationSettings(this)
-
-        // 🆕 Optional: try to open Huawei screens (you can remove it if you want to do it only from InfoScreen)
-        openHuaweiAutostart(this)
+        // 🆕 Show battery/Huawei tips only on first startup
+        showBatteryHintsOnce()
 
 
         // Ask permission only on API 33+
@@ -113,6 +111,47 @@ class MainActivity : ComponentActivity() {
             BuonaCacciaTheme {
                 MainScreen(deepLinkEventId = deepId, deepLinkTitle = deepTitle)
             }
+        }
+    }
+
+    // === BATTERY OPTIMIZATION & HUAWEI AUTO-START HANDLING (Play policy-safe) ===
+
+    private fun showBatteryHintsOnce() {
+        val prefs = getSharedPreferences("bc_prefs", MODE_PRIVATE)
+        val shown = prefs.getBoolean("battery_hints_shown", false)
+        if (!shown) {
+            openBatteryOptimizationSettings(this)
+            openHuaweiAutostart(this)
+            prefs.edit { putBoolean("battery_hints_shown", true) }
+        }
+    }
+
+    private fun openBatteryOptimizationSettings(context: Context) {
+        try {
+            val intent = Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS)
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            context.startActivity(intent)
+        } catch (_: Exception) {
+            // Some OEMs do not have this activity
+        }
+    }
+
+    private fun openHuaweiAutostart(context: Context) {
+        val intents = listOf(
+            Intent().setComponent(
+                ComponentName(
+                    "com.huawei.systemmanager",
+                    "com.huawei.systemmanager.startupmgr.ui.StartupNormalAppListActivity"
+                )
+            ),
+            Intent("huawei.intent.action.HSM_PROTECTED_APPS")
+        )
+        for (i in intents) {
+            try {
+                i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                context.startActivity(i)
+                return
+            } catch (_: Exception) { /* move on to the next */ }
         }
     }
 }
@@ -585,45 +624,5 @@ private fun LegendRow(colorHex: String, label: String) {
                 .background(color = Color(colorHex.toColorInt()), shape = CircleShape)
         )
         Text(label)
-    }
-}
-
-// === BATTERY OPTIMIZATION & HUAWEI AUTO-START HANDLING (Play policy-safe) ===
-
-/**
- * Play policy-safe: DOES NOT ask for exemption via ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS.
- * Simply opens the system screen where the user can manually manage.
- * optimizations for all apps.
- */
-private fun openBatteryOptimizationSettings(context: Context) {
-    try {
-        val intent = Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS)
-            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-        context.startActivity(intent)
-    } catch (_: Exception) {
-        // Some OEMs may not have this activity: silently ignore
-    }
-}
-
-/**
- * Try opening EMUI screens for auto startup/app protection.
- * If not available, do nothing.
- */
-private fun openHuaweiAutostart(context: Context) {
-    val intents = listOf(
-        Intent().setComponent(
-            ComponentName(
-                "com.huawei.systemmanager",
-                "com.huawei.systemmanager.startupmgr.ui.StartupNormalAppListActivity"
-            )
-        ),
-        Intent("huawei.intent.action.HSM_PROTECTED_APPS")
-    )
-    for (i in intents) {
-        try {
-            i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-            context.startActivity(i)
-            return
-        } catch (_: Exception) { /* move on to the next */ }
     }
 }
