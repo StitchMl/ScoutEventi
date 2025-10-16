@@ -6,26 +6,35 @@
       <w>analizzati</w>
       <w>annulla</w>
       <w>aperte</w>
+      <w>apertura</w>
+      <w>appena</w>
       <w>appname</w>
       <w>apre</w>
       <w>aprirà</w>
       <w>aprono</w>
       <w>arancione</w>
+      <w>attenzione</w>
       <w>attuali</w>
+      <w>automatico</w>
       <w>avviato</w>
       <w>baef</w>
       <w>buona</w>
       <w>buonacaccia</w>
       <w>caccia</w>
       <w>canali</w>
+      <w>cancellare</w>
       <w>capi</w>
       <w>capilc</w>
       <w>cerca</w>
       <w>chiude</w>
+      <w>chiudi</w>
       <w>chiudono</w>
+      <w>chiuse</w>
       <w>chiusura</w>
       <w>citta</w>
       <w>città</w>
+      <w>colori</w>
+      <w>compariranno</w>
       <w>completato</w>
       <w>consenti</w>
       <w>contatto</w>
@@ -39,6 +48,7 @@
       <w>domani</w>
       <w>dorg</w>
       <w>d’aosta</w>
+      <w>d’attesa</w>
       <w>emiro</w>
       <w>endlocal</w>
       <w>errore</w>
@@ -47,11 +57,15 @@
       <w>esploratori</w>
       <w>eventi</w>
       <w>evento</w>
+      <w>filtra</w>
       <w>filtri</w>
       <w>formazione</w>
       <w>giorni</w>
+      <w>giorno</w>
       <w>goodhunting</w>
       <w>inclusi</w>
+      <w>informazioni</w>
+      <w>iniziale</w>
       <w>inizializzati</w>
       <w>inizializzato</w>
       <w>iscritti</w>
@@ -62,6 +76,8 @@
       <w>ivrea</w>
       <w>lascia</w>
       <w>lato</w>
+      <w>legenda</w>
+      <w>lista</w>
       <w>localita</w>
       <w>località</w>
       <w>lombardia</w>
@@ -69,6 +85,7 @@
       <w>lupette</w>
       <w>lupetti</w>
       <w>l’apertura</w>
+      <w>l’app</w>
       <w>l’evento</w>
       <w>l’iscrizione</w>
       <w>marche</w>
@@ -83,8 +100,10 @@
       <w>oggi</w>
       <w>partenza</w>
       <w>piemonte</w>
+      <w>pieno</w>
       <w>posti</w>
       <w>promemoria</w>
+      <w>pronti</w>
       <w>pubblicati</w>
       <w>puglia</w>
       <w>puoi</w>
@@ -94,14 +113,18 @@
       <w>reparto</w>
       <w>responsabili</w>
       <w>retrocompat</w>
+      <w>ricerca</w>
       <w>riceverai</w>
       <w>ricevere</w>
       <w>ricordare</w>
       <w>rientro</w>
+      <w>rimani</w>
       <w>rosso</w>
       <w>salva</w>
       <w>sardegna</w>
       <w>scadenza</w>
+      <w>scaricamento</w>
+      <w>scaricando</w>
       <w>scolte</w>
       <w>sconosciuta</w>
       <w>scorzè</w>
@@ -112,7 +135,10 @@
       <w>settimana</w>
       <w>silenziare</w>
       <w>silenziati</w>
+      <w>startupmgr</w>
       <w>stato</w>
+      <w>suggerimenti</w>
+      <w>systemmanager</w>
       <w>tbody</w>
       <w>thead</w>
       <w>tipi</w>
@@ -124,6 +150,7 @@
       <w>ultimi</w>
       <w>unità</w>
       <w>valdaosta</w>
+      <w>vedi</w>
       <w>vuoto</w>
       <w>workmanager</w>
     </words>

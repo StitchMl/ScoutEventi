@@ -12,6 +12,7 @@ import it.buonacaccia.app.data.Branch
 import it.buonacaccia.app.data.EventsRepository
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
+import kotlin.coroutines.cancellation.CancellationException
 
 enum class UnitFilter { TUTTE, BRANCO, REPARTO, CLAN, CAPI }
 
@@ -49,12 +50,26 @@ class EventsViewModel(
 
     @RequiresApi(Build.VERSION_CODES.TIRAMISU)
     fun refresh() {
+        // Avoid double refresh if already in progress
+        if (loadJob?.isActive == true) return
+
+        // Delete possibly an old job
         loadJob?.cancel()
+
         state = state.copy(loading = true, error = null)
+
         loadJob = viewModelScope.launch {
-            runCatching { repo.fetch(all = true) }
-                .onSuccess { list -> state = state.copy(loading = false, items = list) }
-                .onFailure { e -> state = state.copy(loading = false, error = e.message ?: "Error") }
+            try {
+                val list = repo.fetch(all = true)
+                state = state.copy(loading = false, items = list, error = null)
+            } catch (_: CancellationException) {
+                // ⚠️ cancellation is "normal": don't show it in UI
+                // Relaunch if you want to propagate to higher level:
+                // throw ce
+                state = state.copy(loading = false) // no error
+            } catch (e: Exception) {
+                state = state.copy(loading = false, error = e.message ?: "Errore di rete")
+            }
         }
     }
 

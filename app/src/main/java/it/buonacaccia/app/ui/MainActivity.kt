@@ -3,12 +3,17 @@
 package it.buonacaccia.app.ui
 
 import android.Manifest
+import android.content.ComponentName
+import android.content.Context
+import android.content.Intent
 import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
+import android.provider.Settings
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.annotation.RequiresApi
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -24,10 +29,12 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AddAlert
 import androidx.compose.material.icons.filled.AddLocation
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.AlertDialog
@@ -55,11 +62,15 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.unit.dp
+import androidx.core.graphics.toColorInt
 import com.google.accompanist.swiperefresh.SwipeRefresh
 import com.google.accompanist.swiperefresh.rememberSwipeRefreshState
+import it.buonacaccia.app.R
 import it.buonacaccia.app.data.BcEvent
 import it.buonacaccia.app.data.EventStore
 import it.buonacaccia.app.ui.components.EventCard
@@ -79,6 +90,12 @@ class MainActivity : ComponentActivity() {
         if (checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
             requestPermissions(arrayOf(Manifest.permission.POST_NOTIFICATIONS), 1001)
         }
+        // 🆕 Request exclusion from battery optimization (once)
+        openBatteryOptimizationSettings(this)
+
+        // 🆕 Optional: try to open Huawei screens (you can remove it if you want to do it only from InfoScreen)
+        openHuaweiAutostart(this)
+
 
         // Ask permission only on API 33+
         val granted = androidx.core.content.ContextCompat.checkSelfPermission(
@@ -136,6 +153,7 @@ private fun MainScreen(
     // Multi-selection dialog types
     var showTypesDialog by remember { mutableStateOf(false) }
     var showRegionsDialog by remember { mutableStateOf(false) }
+    var showInfo by remember { mutableStateOf(false) }
 
     // List of available types (derived from current events)
     val availableTypes = remember(state.items) {
@@ -148,9 +166,19 @@ private fun MainScreen(
     Scaffold(
         topBar = {
             TopAppBar(
+                navigationIcon = {
+                    Icon(
+                        painter = painterResource(R.drawable.ic_launcher_foreground),
+                        contentDescription = "App icon",
+                        modifier = Modifier.padding(start = 8.dp)
+                    )
+                },
                 title = { Text("Eventi BuonaCaccia") },
                 actions = {
-                    IconButton(onClick = { vm.refresh() }) {
+                    IconButton(
+                        onClick = { if (!state.loading) vm.refresh() },
+                        enabled = !state.loading
+                    ) {
                         Icon(Icons.Default.Refresh, contentDescription = "Refresh")
                     }
                     IconButton(onClick = { showTypesDialog = true }) {
@@ -158,6 +186,10 @@ private fun MainScreen(
                     }
                     IconButton(onClick = { showRegionsDialog = true }) {
                         Icon(Icons.Default.AddLocation, contentDescription = "Regioni notifiche")
+                    }
+                    // 🆕 Info button
+                    IconButton(onClick = { showInfo = true }) {
+                        Icon(Icons.Default.Info, contentDescription = "Info")
                     }
                 }
             )
@@ -168,6 +200,19 @@ private fun MainScreen(
                 .fillMaxSize()
                 .padding(padding)
         ) {
+            // 🆕 Notice: I am downloading (only if loading and empty cache)
+            if (state.loading && cached.isEmpty()) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 12.dp, vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    androidx.compose.material3.CircularProgressIndicator(Modifier.padding(end = 12.dp))
+                    Text("Sto scaricando gli eventi…")
+                }
+            }
+
             SearchBarField(
                 value = state.query,
                 onValueChange = vm::onQueryChange
@@ -192,7 +237,7 @@ private fun MainScreen(
 
             SwipeRefresh(
                 state = swipeState,
-                onRefresh = { vm.refresh() },
+                onRefresh = { if (!state.loading) vm.refresh() },
             ) {
                 val events: List<BcEvent> = vm.filtered
                 if (events.isEmpty() && !state.loading) {
@@ -211,6 +256,12 @@ private fun MainScreen(
                 }
             }
         }
+    }
+
+    // 🆕 Show full-screen info screen
+    if (showInfo) {
+        InfoScreen(onClose = { showInfo = false })
+        return
     }
 
     if (showTypesDialog) {
@@ -479,5 +530,100 @@ private fun FiltersRow(
             checked = onlyOpen,
             onCheckedChange = onOnlyOpenChange
         )
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun InfoScreen(onClose: () -> Unit) {
+    Scaffold(
+        topBar = {
+            TopAppBar(
+                navigationIcon = {
+                    IconButton(onClick = onClose) {
+                        Icon(Icons.Default.Close, contentDescription = "Chiudi")
+                    }
+                },
+                title = { Text("Informazioni") }
+            )
+        }
+    ) { padding ->
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(padding)
+                .padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp)
+        ) {
+            Text("Legenda colori eventi", style = MaterialTheme.typography.titleMedium)
+            LegendRow(colorHex = "#4CAF50", label = "Iscrizioni aperte (verde)")
+            LegendRow(colorHex = "#FFEB3B", label = "Attenzione / quasi pieno (giallo)")
+            LegendRow(colorHex = "#9C27B0", label = "Lista d’attesa (viola)")
+            LegendRow(colorHex = "#F44336", label = "Iscrizioni chiuse (rosso)")
+
+            Spacer(Modifier.height(8.dp))
+            Text("Suggerimenti", style = MaterialTheme.typography.titleMedium)
+            Text("• Filtra per Regione e Branca.\n• La barra di ricerca ha la “X” per cancellare.\n• Notifiche: nuovi eventi; 7/1 giorno prima e il giorno di apertura (prima delle 9:00); 1 giorno prima della chiusura.")
+
+            Spacer(Modifier.height(8.dp))
+            Text("Scaricamento iniziale", style = MaterialTheme.typography.titleMedium)
+            Text("Se non vedi ancora eventi, l’app sta scaricando la lista. Rimani online: appena pronti compariranno in automatico.")
+        }
+    }
+}
+
+@Composable
+private fun LegendRow(colorHex: String, label: String) {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(10.dp)
+    ) {
+        Box(
+            modifier = Modifier
+                .width(16.dp)
+                .height(16.dp)
+                .background(color = Color(colorHex.toColorInt()), shape = CircleShape)
+        )
+        Text(label)
+    }
+}
+
+// === BATTERY OPTIMIZATION & HUAWEI AUTO-START HANDLING (Play policy-safe) ===
+
+/**
+ * Play policy-safe: DOES NOT ask for exemption via ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS.
+ * Simply opens the system screen where the user can manually manage.
+ * optimizations for all apps.
+ */
+private fun openBatteryOptimizationSettings(context: Context) {
+    try {
+        val intent = Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS)
+            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        context.startActivity(intent)
+    } catch (_: Exception) {
+        // Some OEMs may not have this activity: silently ignore
+    }
+}
+
+/**
+ * Try opening EMUI screens for auto startup/app protection.
+ * If not available, do nothing.
+ */
+private fun openHuaweiAutostart(context: Context) {
+    val intents = listOf(
+        Intent().setComponent(
+            ComponentName(
+                "com.huawei.systemmanager",
+                "com.huawei.systemmanager.startupmgr.ui.StartupNormalAppListActivity"
+            )
+        ),
+        Intent("huawei.intent.action.HSM_PROTECTED_APPS")
+    )
+    for (i in intents) {
+        try {
+            i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            context.startActivity(i)
+            return
+        } catch (_: Exception) { /* move on to the next */ }
     }
 }
