@@ -173,7 +173,7 @@ private fun MainScreen(
                         modifier = Modifier.padding(start = 8.dp)
                     )
                 },
-                title = { Text("Eventi BuonaCaccia") },
+                title = { Text("Eventi Buona Caccia") },
                 actions = {
                     IconButton(
                         onClick = { if (!state.loading) vm.refresh() },
