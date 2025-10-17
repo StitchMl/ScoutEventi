@@ -11,10 +11,28 @@ import java.net.URLEncoder
 import java.net.URLDecoder
 import java.nio.charset.StandardCharsets
 import java.time.LocalDate
+import androidx.datastore.preferences.core.stringPreferencesKey
 
 private val Context.dataStore by preferencesDataStore("bc_prefs")
 
 object EventStore {
+    // --- Theme mode (manual override) ---
+    enum class ThemeMode { SYSTEM, LIGHT, DARK }
+    private val KEY_THEME_MODE = stringPreferencesKey("theme_mode")
+
+    fun themeModeFlow(ctx: Context): Flow<ThemeMode> =
+        ctx.dataStore.data.map { pref ->
+            when (pref[KEY_THEME_MODE]) {
+                "LIGHT" -> ThemeMode.LIGHT
+                "DARK" -> ThemeMode.DARK
+                else -> ThemeMode.SYSTEM
+            }
+        }
+
+    suspend fun setThemeMode(ctx: Context, mode: ThemeMode) {
+        ctx.dataStore.edit { it[KEY_THEME_MODE] = mode.name }
+        Timber.d("EventStore.setThemeMode=%s", mode)
+    }
     private val KEY_SEEN_IDS = stringSetPreferencesKey("seen_ids")
     private val KEY_NOTIFY_TYPES = stringSetPreferencesKey("notify_types")
     private val KEY_NOTIFY_REGIONS = stringSetPreferencesKey("notify_regions")

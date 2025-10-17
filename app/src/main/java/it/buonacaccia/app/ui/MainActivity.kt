@@ -78,6 +78,9 @@ import it.buonacaccia.app.ui.theme.BuonaCacciaTheme
 import kotlinx.coroutines.launch
 import org.koin.androidx.compose.koinViewModel
 import androidx.core.content.edit
+import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.material3.RadioButton
+import androidx.compose.material3.RadioButtonDefaults
 
 class MainActivity : ComponentActivity() {
 
@@ -108,8 +111,30 @@ class MainActivity : ComponentActivity() {
         val deepTitle = intent?.getStringExtra("open_event_title")
 
         setContent {
-            BuonaCacciaTheme {
-                MainScreen(deepLinkEventId = deepId, deepLinkTitle = deepTitle)
+            // Read theme preference and calculate boolean for Theme wrapper
+            val ctx = this
+            val themeMode by EventStore.themeModeFlow(ctx).collectAsState(initial = EventStore.ThemeMode.SYSTEM)
+            val dark = when (themeMode) {
+                EventStore.ThemeMode.SYSTEM -> isSystemInDarkTheme()
+                EventStore.ThemeMode.DARK   -> true
+                EventStore.ThemeMode.LIGHT  -> false
+            }
+
+            // ✅ scope Compose to launch coroutines from the composable
+            val activityScope = rememberCoroutineScope()
+
+            BuonaCacciaTheme(darkTheme = dark) {
+                MainScreen(
+                    deepLinkEventId = deepId,
+                    deepLinkTitle = deepTitle,
+                    themeMode = themeMode,
+                    onChangeTheme = { mode ->
+                        // ✅ call suspend from a coroutine
+                        activityScope.launch {
+                            EventStore.setThemeMode(ctx, mode)
+                        }
+                    }
+                )
             }
         }
     }
@@ -163,7 +188,9 @@ enum class NotifyMode { ALLOWLIST, DENYLIST }
 private fun MainScreen(
     vm: EventsViewModel = koinViewModel(),
     deepLinkEventId: String? = null,
-    deepLinkTitle: String? = null
+    deepLinkTitle: String? = null,
+    themeMode: EventStore.ThemeMode,
+    onChangeTheme: (EventStore.ThemeMode) -> Unit
 ) {
     val context = LocalContext.current
     val cached by EventStore.cachedEventsFlow(context).collectAsState(initial = emptyList())
@@ -212,7 +239,7 @@ private fun MainScreen(
                         modifier = Modifier.padding(start = 8.dp)
                     )
                 },
-                title = { Text("Eventi Buona Caccia") },
+                title = { Text("Buona Caccia") },
                 actions = {
                     IconButton(
                         onClick = { if (!state.loading) vm.refresh() },
@@ -299,7 +326,11 @@ private fun MainScreen(
 
     // 🆕 Show full-screen info screen
     if (showInfo) {
-        InfoScreen(onClose = { showInfo = false })
+        InfoScreen(
+            onClose = { showInfo = false },
+            themeMode = themeMode,
+            onChangeTheme = onChangeTheme
+        )
         return
     }
 
@@ -574,7 +605,11 @@ private fun FiltersRow(
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun InfoScreen(onClose: () -> Unit) {
+private fun InfoScreen(
+    onClose: () -> Unit,
+    themeMode: EventStore.ThemeMode,
+    onChangeTheme: (EventStore.ThemeMode) -> Unit
+) {
     Scaffold(
         topBar = {
             TopAppBar(
@@ -594,6 +629,13 @@ private fun InfoScreen(onClose: () -> Unit) {
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
+            Text("Tema", style = MaterialTheme.typography.titleMedium)
+            ThemeChooserRow(
+                current = themeMode,
+                onChange = onChangeTheme
+            )
+
+            Spacer(Modifier.height(8.dp))
             Text("Legenda colori eventi", style = MaterialTheme.typography.titleMedium)
             LegendRow(colorHex = "#4CAF50", label = "Iscrizioni aperte (verde)")
             LegendRow(colorHex = "#FFEB3B", label = "Attenzione / quasi pieno (giallo)")
@@ -622,6 +664,38 @@ private fun LegendRow(colorHex: String, label: String) {
                 .width(16.dp)
                 .height(16.dp)
                 .background(color = Color(colorHex.toColorInt()), shape = CircleShape)
+        )
+        Text(label)
+    }
+}
+
+@Composable
+private fun ThemeChooserRow(
+    current: EventStore.ThemeMode,
+    onChange: (EventStore.ThemeMode) -> Unit
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        ThemeOptionRow("Sistema (predefinito)", EventStore.ThemeMode.SYSTEM, current, onChange)
+        ThemeOptionRow("Chiaro", EventStore.ThemeMode.LIGHT, current, onChange)
+        ThemeOptionRow("Scuro", EventStore.ThemeMode.DARK, current, onChange)
+    }
+}
+
+@Composable
+private fun ThemeOptionRow(
+    label: String,
+    value: EventStore.ThemeMode,
+    current: EventStore.ThemeMode,
+    onChange: (EventStore.ThemeMode) -> Unit
+) {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        RadioButton(
+            selected = (value == current),
+            onClick = { onChange(value) },
+            colors = RadioButtonDefaults.colors()
         )
         Text(label)
     }

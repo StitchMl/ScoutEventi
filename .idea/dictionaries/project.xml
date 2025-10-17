@@ -26,6 +26,7 @@
       <w>capi</w>
       <w>capilc</w>
       <w>cerca</w>
+      <w>chiaro</w>
       <w>chiude</w>
       <w>chiudi</w>
       <w>chiudono</w>
@@ -102,6 +103,7 @@
       <w>piemonte</w>
       <w>pieno</w>
       <w>posti</w>
+      <w>predefinito</w>
       <w>promemoria</w>
       <w>pronti</w>
       <w>pubblicati</w>
@@ -128,6 +130,7 @@
       <w>scolte</w>
       <w>sconosciuta</w>
       <w>scorzè</w>
+      <w>scuro</w>
       <w>seleziona</w>
       <w>selezionati</w>
       <w>selezioni</w>
@@ -135,11 +138,13 @@
       <w>settimana</w>
       <w>silenziare</w>
       <w>silenziati</w>
+      <w>sistema</w>
       <w>startupmgr</w>
       <w>stato</w>
       <w>suggerimenti</w>
       <w>systemmanager</w>
       <w>tbody</w>
+      <w>tema</w>
       <w>thead</w>
       <w>tipi</w>
       <w>tipo</w>
