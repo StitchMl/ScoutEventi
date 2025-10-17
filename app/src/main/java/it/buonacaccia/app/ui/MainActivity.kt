@@ -81,6 +81,8 @@ import androidx.core.content.edit
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.RadioButtonDefaults
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 
 class MainActivity : ComponentActivity() {
 
@@ -622,11 +624,14 @@ private fun InfoScreen(
             )
         }
     ) { padding ->
+        val scroll = rememberScrollState()
+
         Column(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(padding)
-                .padding(16.dp),
+                .padding(16.dp)
+                .verticalScroll(scroll),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
             Text("Tema", style = MaterialTheme.typography.titleMedium)
@@ -649,6 +654,8 @@ private fun InfoScreen(
             Spacer(Modifier.height(8.dp))
             Text("Scaricamento iniziale", style = MaterialTheme.typography.titleMedium)
             Text("Se non vedi ancora eventi, l’app sta scaricando la lista. Rimani online: appena pronti compariranno in automatico.")
+
+            Spacer(Modifier.height(24.dp)) // some space at the bottom
         }
     }
 }
