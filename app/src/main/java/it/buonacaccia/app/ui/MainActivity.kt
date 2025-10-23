@@ -616,7 +616,7 @@ private fun FiltersRow(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 16.dp)
+            .padding(horizontal = 8.dp)
             .clip(RoundedCornerShape(16.dp))
             .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f))
             .padding(vertical = 8.dp, horizontal = 12.dp),
@@ -624,14 +624,14 @@ private fun FiltersRow(
         verticalAlignment = Alignment.CenterVertically
     ) {
         FilterToggle(
-            label = "Solo iscrivibili",
+            label = "Aperti",
             icon = Icons.Filled.EventAvailable,
             checked = onlyOpen,
             onCheckedChange = onOnlyOpenChange
         )
 
         FilterToggle(
-            label = "Solo seguiti",
+            label = "Pin",
             icon = Icons.Filled.NotificationsActive,
             checked = onlyFollowed,
             onCheckedChange = onOnlyFollowedChange
@@ -653,7 +653,7 @@ private fun FilterToggle(
             .clickable { onCheckedChange(!checked) },
         tonalElevation = if (checked) 4.dp else 0.dp,
         color = if (checked)
-            MaterialTheme.colorScheme.primary.copy(alpha = 0.15f)
+            MaterialTheme.colorScheme.primaryContainer
         else
             Color.Transparent
     ) {
@@ -666,14 +666,14 @@ private fun FilterToggle(
                 imageVector = icon,
                 contentDescription = label,
                 tint = if (checked)
-                    MaterialTheme.colorScheme.primary
+                    MaterialTheme.colorScheme.onPrimaryContainer
                 else
                     MaterialTheme.colorScheme.onSurfaceVariant
             )
             Text(
                 text = label,
                 color = if (checked)
-                    MaterialTheme.colorScheme.primary
+                    MaterialTheme.colorScheme.onPrimaryContainer
                 else
                     MaterialTheme.colorScheme.onSurfaceVariant,
                 style = MaterialTheme.typography.labelLarge
