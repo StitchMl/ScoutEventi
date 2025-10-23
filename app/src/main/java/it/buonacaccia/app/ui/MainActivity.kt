@@ -14,6 +14,8 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.annotation.RequiresApi
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -29,12 +31,17 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AddAlert
 import androidx.compose.material.icons.filled.AddLocation
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.EventAvailable
 import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.NotificationsActive
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.AlertDialog
@@ -47,8 +54,12 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.RadioButton
+import androidx.compose.material3.RadioButtonDefaults
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
+import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
@@ -62,11 +73,15 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.unit.dp
+import androidx.core.content.edit
 import androidx.core.graphics.toColorInt
 import com.google.accompanist.swiperefresh.SwipeRefresh
 import com.google.accompanist.swiperefresh.rememberSwipeRefreshState
@@ -77,12 +92,6 @@ import it.buonacaccia.app.ui.components.EventCard
 import it.buonacaccia.app.ui.theme.BuonaCacciaTheme
 import kotlinx.coroutines.launch
 import org.koin.androidx.compose.koinViewModel
-import androidx.core.content.edit
-import androidx.compose.foundation.isSystemInDarkTheme
-import androidx.compose.material3.RadioButton
-import androidx.compose.material3.RadioButtonDefaults
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
 
 class MainActivity : ComponentActivity() {
 
@@ -197,6 +206,11 @@ private fun MainScreen(
     val context = LocalContext.current
     val cached by EventStore.cachedEventsFlow(context).collectAsState(initial = emptyList())
     val scope = rememberCoroutineScope()
+    // Events followed (bell)
+    val subscribedIds by EventStore.subscribedIdsFlow(context).collectAsState(initial = emptySet())
+
+    // "Followed only" filter (UI status).
+    var onlyFollowed by remember { mutableStateOf(false) }
 
     // Preferences: types selected for notifications
     val interestedTypes by EventStore
@@ -293,7 +307,9 @@ private fun MainScreen(
                 selectedUnit = state.unit,
                 onUnitChange = vm::onUnitChange,
                 onlyOpen = state.onlyOpen,                     // 🆕
-                onOnlyOpenChange = vm::onOnlyOpenChange        // 🆕
+                onOnlyOpenChange = vm::onOnlyOpenChange,
+                onlyFollowed = onlyFollowed,                         // 🆕
+                onOnlyFollowedChange = { onlyFollowed = it }         // 🆕
             )
 
             if (state.error != null) {
@@ -307,7 +323,10 @@ private fun MainScreen(
                 state = swipeState,
                 onRefresh = { if (!state.loading) vm.refresh() },
             ) {
-                val events: List<BcEvent> = vm.filtered
+                val base: List<BcEvent> = vm.filtered
+                val events: List<BcEvent> =
+                    if (onlyFollowed) base.filter { ev -> EventStore.eventKeyOf(ev) in subscribedIds }
+                    else base
                 if (events.isEmpty() && !state.loading) {
                     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                         Text("No events found")
@@ -520,8 +539,10 @@ private fun FiltersRow(
     onRegionChange: (String) -> Unit,
     selectedUnit: UnitFilter,
     onUnitChange: (UnitFilter) -> Unit,
-    onlyOpen: Boolean,                         // 🆕
-    onOnlyOpenChange: (Boolean) -> Unit        // 🆕
+    onlyOpen: Boolean,
+    onOnlyOpenChange: (Boolean) -> Unit,
+    onlyFollowed: Boolean,                              // 🆕
+    onOnlyFollowedChange: (Boolean) -> Unit             // 🆕
 ) {
     Row(
         Modifier
@@ -593,15 +614,80 @@ private fun FiltersRow(
         }
     }
     Row(
-        verticalAlignment = Alignment.CenterVertically,
-        modifier = Modifier.padding(horizontal = 16.dp)
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp)
+            .clip(RoundedCornerShape(16.dp))
+            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f))
+            .padding(vertical = 8.dp, horizontal = 12.dp),
+        horizontalArrangement = Arrangement.SpaceEvenly,
+        verticalAlignment = Alignment.CenterVertically
     ) {
-        Text("Solo iscrivibili")
-        Spacer(Modifier.width(8.dp))
-        Switch(
+        FilterToggle(
+            label = "Solo iscrivibili",
+            icon = Icons.Filled.EventAvailable,
             checked = onlyOpen,
             onCheckedChange = onOnlyOpenChange
         )
+
+        FilterToggle(
+            label = "Solo seguiti",
+            icon = Icons.Filled.NotificationsActive,
+            checked = onlyFollowed,
+            onCheckedChange = onOnlyFollowedChange
+        )
+    }
+}
+
+@Composable
+private fun FilterToggle(
+    label: String,
+    icon: ImageVector,
+    checked: Boolean,
+    onCheckedChange: (Boolean) -> Unit
+) {
+    Surface(
+        modifier = Modifier
+            .padding(horizontal = 4.dp)
+            .clip(RoundedCornerShape(12.dp))
+            .clickable { onCheckedChange(!checked) },
+        tonalElevation = if (checked) 4.dp else 0.dp,
+        color = if (checked)
+            MaterialTheme.colorScheme.primary.copy(alpha = 0.15f)
+        else
+            Color.Transparent
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Icon(
+                imageVector = icon,
+                contentDescription = label,
+                tint = if (checked)
+                    MaterialTheme.colorScheme.primary
+                else
+                    MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            Text(
+                text = label,
+                color = if (checked)
+                    MaterialTheme.colorScheme.primary
+                else
+                    MaterialTheme.colorScheme.onSurfaceVariant,
+                style = MaterialTheme.typography.labelLarge
+            )
+            Switch(
+                checked = checked,
+                onCheckedChange = onCheckedChange,
+                colors = SwitchDefaults.colors(
+                    checkedThumbColor = MaterialTheme.colorScheme.primary,
+                    checkedTrackColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.4f)
+                ),
+                modifier = Modifier.scale(0.8f)
+            )
+        }
     }
 }
 
