@@ -71,6 +71,8 @@ object HtmlParser {
             region = when (region?.lowercase(Locale.ROOT)) {
                 "vda", "val d'aosta", "valdaosta", "valle d’aosta", "valle d'aosta" -> "Valle d'Aosta"
                 "emiro", "emilia romagna", "emilia-romagna" -> "Emilia-Romagna"
+                "taa" -> "Trentino Alto Adige"
+                "fvg" -> "Friuli Venezia Giulia"
                 else -> region
             }
             val start    = parseDate(cells.getOrNull(iTitle + 2)?.text())                // "23/10/2025"

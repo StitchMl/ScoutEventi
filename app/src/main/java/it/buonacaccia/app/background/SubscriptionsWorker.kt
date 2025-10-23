@@ -44,6 +44,12 @@ class SubscriptionsWorker(
             // 3) Upload current cache + set reminders already sent
             val events = EventStore.cachedEventsFlow(applicationContext).first()
             val sent = EventStore.sentRemindersFlow(applicationContext).first().toMutableSet()
+            val subscribed = EventStore.subscribedIdsFlow(applicationContext).first()
+
+            // Consider ONLY those events that are subscribed
+            val toRemind = events.filter { ev ->
+                EventStore.eventKeyOf(ev) in subscribed
+            }
 
             val today = LocalDate.now()
             val perm = ContextCompat.checkSelfPermission(
@@ -55,7 +61,7 @@ class SubscriptionsWorker(
             val now = LocalTime.now()
             val before9 = now.isBefore(LocalTime.of(9, 0))
 
-            for (ev in events) {
+            for (ev in toRemind) {
                 val open = ev.subsOpenDate
                 val close = ev.subsCloseDate
 

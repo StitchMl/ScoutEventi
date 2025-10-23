@@ -16,6 +16,8 @@ import androidx.datastore.preferences.core.stringPreferencesKey
 private val Context.dataStore by preferencesDataStore("bc_prefs")
 
 object EventStore {
+    private val KEY_SUBSCRIBED_IDS = stringSetPreferencesKey("subscribed_ids")
+
     // --- Theme mode (manual override) ---
     enum class ThemeMode { SYSTEM, LIGHT, DARK }
     private val KEY_THEME_MODE = stringPreferencesKey("theme_mode")
@@ -85,6 +87,12 @@ object EventStore {
             if (removed.isNotEmpty()) {
                 val curSeen = pref[KEY_SEEN_IDS] ?: emptySet()
                 pref[KEY_SEEN_IDS] = curSeen - removed
+            }
+            // optional: also clean "subscribed" so it doesn't grow indefinitely
+            if (removed.isNotEmpty()) {
+                val curSub = pref[KEY_SUBSCRIBED_IDS] ?: emptySet()
+                // removes only for keys == id; (if some event used detailUrl as key is not in the set 'removed')
+                pref[KEY_SUBSCRIBED_IDS] = curSub - removed
             }
         }
         if (removed.isNotEmpty()) Timber.i("EventStore.purgeClosed removed=%s", removed)
@@ -191,5 +199,21 @@ object EventStore {
     suspend fun setNotifyTypes(ctx: Context, types: Set<String>) {
         ctx.dataStore.edit { it[KEY_NOTIFY_TYPES] = types }
         Timber.d("EventStore.setNotifyTypes %s", types)
+    }
+
+    /** Stable key for an event: id if present, otherwise detailUrl. */
+    fun eventKeyOf(e: BcEvent): String = e.id ?: e.detailUrl
+
+    /** Subscribed events (key set = id|detailUrl). */
+    fun subscribedIdsFlow(ctx: Context): Flow<Set<String>> =
+        ctx.dataStore.data.map { it[KEY_SUBSCRIBED_IDS] ?: emptySet() }
+
+    /** Sets/shuts down the underwriting of an individual event. */
+    suspend fun setSubscribed(ctx: Context, key: String, enabled: Boolean) {
+        ctx.dataStore.edit { pref ->
+            val cur = pref[KEY_SUBSCRIBED_IDS] ?: emptySet()
+            pref[KEY_SUBSCRIBED_IDS] = if (enabled) cur + key else cur - key
+        }
+        Timber.d("EventStore.setSubscribed key=%s enabled=%s", key, enabled)
     }
 }
