@@ -8,7 +8,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.core.net.toUri
 import androidx.glance.GlanceId
 import androidx.glance.GlanceModifier
 import androidx.glance.action.Action
@@ -175,19 +174,14 @@ class UpcomingOpeningsWidget : GlanceAppWidget() {
         }
     }
 
-    /** If the URL is valid -> browser; otherwise, open app with precompiled filter. */
+    /** Tap on the row → open the app and ask to show that event */
     private fun clickActionFor(ctx: Context, e: BcEvent): Action {
-        val url = e.detailUrl
-        return if (url.startsWith("http", ignoreCase = true)) {
-            val intent = Intent(Intent.ACTION_VIEW, url.toUri())
-                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-            actionStartActivity(intent)
-        } else {
-            val intent = Intent(ctx, MainActivity::class.java)
-                .putExtra("prefill_query", e.title)
-                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-            actionStartActivity(intent)
-        }
+        val intent = Intent(ctx, MainActivity::class.java)
+            .putExtra("open_event_id", e.id)      // used for precise matching
+            .putExtra("open_event_title", e.title) // fallback/UX
+            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+
+        return actionStartActivity(intent)
     }
 }
 
