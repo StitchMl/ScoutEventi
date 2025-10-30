@@ -12,6 +12,8 @@ import java.net.URLDecoder
 import java.nio.charset.StandardCharsets
 import java.time.LocalDate
 import androidx.datastore.preferences.core.stringPreferencesKey
+import androidx.glance.appwidget.updateAll
+import it.buonacaccia.app.widget.UpcomingOpeningsWidget
 
 private val Context.dataStore by preferencesDataStore("bc_prefs")
 
@@ -63,6 +65,9 @@ object EventStore {
         ctx.dataStore.edit { pref ->
             pref[KEY_CACHED_EVENTS] = filtered.map { encodeEvent(it) }.toSet()
         }
+        // after writing the cache:
+        androidx.glance.appwidget.GlanceAppWidgetManager(ctx).getGlanceIds(UpcomingOpeningsWidget::class.java)
+        UpcomingOpeningsWidget().updateAll(ctx) // update all widgets of this type
         Timber.d("EventStore.setCachedEvents size=%d (filtered from %d)", filtered.size, events.size)
     }
 
@@ -87,6 +92,9 @@ object EventStore {
             val toSave = byId.values.filter { isActive(it) }
             pref[KEY_CACHED_EVENTS] = toSave.map { encodeEvent(it) }.toSet()
         }
+        // after writing the cache:
+        androidx.glance.appwidget.GlanceAppWidgetManager(ctx).getGlanceIds(UpcomingOpeningsWidget::class.java)
+        UpcomingOpeningsWidget().updateAll(ctx) // update all widgets of this type
         Timber.d("EventStore.upsertEvents addedOrUpdated=%d (after filtering)", events.size)
     }
 

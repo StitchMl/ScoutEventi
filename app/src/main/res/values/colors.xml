@@ -1,3 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <color name="widget_bg">#00000000</color>           <!-- transparent/none -->
+    <color name="widget_row_bg">#1E1E1E</color>         <!-- chip background -->
+    <color name="widget_accent">#01BAEF</color>         <!-- app blue -->
+    <color name="widget_hint">#9AA0A6</color>           <!-- secondary text -->
 </resources>

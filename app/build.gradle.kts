@@ -13,8 +13,8 @@ android {
         applicationId = "it.buonacaccia.app"
         minSdk = 26
         targetSdk = 36
-        versionCode = 2
-        versionName = "2.0"
+        versionCode = 3
+        versionName = "3.0"
         vectorDrawables { useSupportLibrary = true }
     }
 
@@ -51,6 +51,7 @@ kotlin {
 }
 
 dependencies {
+    implementation(libs.androidx.palette.ktx)
     // Compose BOM
     val composeBom = platform("androidx.compose:compose-bom:2024.05.00")
     implementation(composeBom)
@@ -91,6 +92,9 @@ dependencies {
 
     // Core-ktx (already included by other dependencies, but good to have)
     implementation(libs.androidx.core.ktx.v1170)
+
+    implementation(libs.androidx.glance.appwidget)
+    implementation(libs.androidx.glance.material3)
 
     // Testing
     testImplementation(libs.junit)
