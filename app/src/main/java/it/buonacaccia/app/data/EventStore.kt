@@ -47,15 +47,23 @@ object EventStore {
         ctx.dataStore.data.map { pref ->
             val raw = pref[KEY_CACHED_EVENTS] ?: emptySet()
             raw.mapNotNull { decodeEvent(it) }
+                .filter { isActive(it) }
         }
+
+    /** An event is valid if it has not already ended (endDate < today). */
+    private fun isActive(e: BcEvent, today: LocalDate = LocalDate.now()): Boolean {
+        val end = e.endDate
+        return end == null || !end.isBefore(today)
+    }
 
     /** Replaces the entire cache. */
     @Suppress("unused")
     suspend fun setCachedEvents(ctx: Context, events: List<BcEvent>) {
+        val filtered = events.filter { isActive(it) }
         ctx.dataStore.edit { pref ->
-            pref[KEY_CACHED_EVENTS] = events.map { encodeEvent(it) }.toSet()
+            pref[KEY_CACHED_EVENTS] = filtered.map { encodeEvent(it) }.toSet()
         }
-        Timber.d("EventStore.setCachedEvents size=%d", events.size)
+        Timber.d("EventStore.setCachedEvents size=%d (filtered from %d)", filtered.size, events.size)
     }
 
     /** Inserts/updates by id (merge), leaving others unaffected. */
@@ -64,34 +72,44 @@ object EventStore {
         ctx.dataStore.edit { pref ->
             val cur = (pref[KEY_CACHED_EVENTS] ?: emptySet()).mapNotNull { decodeEvent(it) }
             val byId = cur.associateBy { it.id }.toMutableMap()
-            events.forEach { e -> byId[e.id] = e }
-            pref[KEY_CACHED_EVENTS] = byId.values.map { encodeEvent(it) }.toSet()
+
+            // Update or remove based on validity (endDate >= today)
+            events.forEach { e ->
+                if (isActive(e)) {
+                    byId[e.id] = e
+                } else {
+                    // if it's finished, remove it from the cache
+                    e.id?.let { byId.remove(it) }
+                }
+            }
+
+            // Additional safety measure: do not save anything that is already finished now.
+            val toSave = byId.values.filter { isActive(it) }
+            pref[KEY_CACHED_EVENTS] = toSave.map { encodeEvent(it) }.toSet()
         }
-        Timber.d("EventStore.upsertEvents addedOrUpdated=%d", events.size)
+        Timber.d("EventStore.upsertEvents addedOrUpdated=%d (after filtering)", events.size)
     }
 
-    /** Removes from cache events with closing entries < today. Returns the removed ids. */
+    /** Removes from cache events with closing entries < today OR ended events. Returns the removed ids. */
     suspend fun purgeClosed(ctx: Context, today: LocalDate): Set<String> {
         var removed: Set<String> = emptySet()
         ctx.dataStore.edit { pref ->
             val cur = (pref[KEY_CACHED_EVENTS] ?: emptySet()).mapNotNull { decodeEvent(it) }
             val (toKeep, toDrop) = cur.partition { e ->
                 val close = e.subsCloseDate
-                // Keep if there is no closing date or is >= today
-                close == null || !close.isBefore(today)
+                val end = e.endDate
+                val subsOk = (close == null || !close.isBefore(today))
+                val endOk = (end == null || !end.isBefore(today))
+                subsOk && endOk
             }
             removed = toDrop.mapNotNull { it.id }.toSet()
             pref[KEY_CACHED_EVENTS] = toKeep.map { encodeEvent(it) }.toSet()
 
-            // optional: also clean up the "seen" ids so they don't grow indefinitely
             if (removed.isNotEmpty()) {
                 val curSeen = pref[KEY_SEEN_IDS] ?: emptySet()
                 pref[KEY_SEEN_IDS] = curSeen - removed
-            }
-            // optional: also clean "subscribed" so it doesn't grow indefinitely
-            if (removed.isNotEmpty()) {
+
                 val curSub = pref[KEY_SUBSCRIBED_IDS] ?: emptySet()
-                // removes only for keys == id; (if some event used detailUrl as key is not in the set 'removed')
                 pref[KEY_SUBSCRIBED_IDS] = curSub - removed
             }
         }
