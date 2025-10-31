@@ -23,6 +23,7 @@ androidApplication = "8.13.0"
 kotlinAndroid = "2.2.20"
 composePlugin = "2.2.20"
 paletteKtx = "1.0.0"
+uiGraphics = "1.9.4"
 
 [libraries]
 androidx-glance-appwidget = { module = "androidx.glance:glance-appwidget", version.ref = "glanceAppwidget" }
@@ -52,6 +53,7 @@ ui-test-junit4 = { module = "androidx.compose.ui:ui-test-junit4" }
 androidx-compose-material3-material3 = { group = "androidx.compose.material3", name = "material3", version.ref = "material3" }
 androidx-compose-foundation-layout = { group = "androidx.compose.foundation", name = "foundation-layout", version.ref = "foundationLayout" }
 androidx-palette-ktx = { group = "androidx.palette", name = "palette-ktx", version.ref = "paletteKtx" }
+androidx-compose-ui-graphics = { group = "androidx.compose.ui", name = "ui-graphics", version.ref = "uiGraphics" }
 
 [plugins]
 ksp = { id = "com.google.devtools.ksp", version.ref = "ksp" }

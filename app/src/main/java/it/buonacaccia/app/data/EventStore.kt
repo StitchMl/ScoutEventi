@@ -14,11 +14,23 @@ import java.time.LocalDate
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.glance.appwidget.updateAll
 import it.buonacaccia.app.widget.UpcomingOpeningsWidget
+import androidx.datastore.preferences.core.booleanPreferencesKey
 
 private val Context.dataStore by preferencesDataStore("bc_prefs")
 
 object EventStore {
     private val KEY_SUBSCRIBED_IDS = stringSetPreferencesKey("subscribed_ids")
+    // --- Widget: mostra solo eventi seguiti ---
+    private val KEY_WIDGET_ONLY_FOLLOWED = booleanPreferencesKey("widget_only_followed")
+
+    suspend fun setWidgetOnlyFollowed(ctx: Context, enabled: Boolean) {
+        ctx.dataStore.edit { it[KEY_WIDGET_ONLY_FOLLOWED] = enabled }
+        // Update widgets now
+        androidx.glance.appwidget.GlanceAppWidgetManager(ctx)
+            .getGlanceIds(UpcomingOpeningsWidget::class.java)
+        UpcomingOpeningsWidget().updateAll(ctx)
+        Timber.d("EventStore.setWidgetOnlyFollowed enabled=%s", enabled)
+    }
 
     // --- Theme mode (manual override) ---
     enum class ThemeMode { SYSTEM, LIGHT, DARK }

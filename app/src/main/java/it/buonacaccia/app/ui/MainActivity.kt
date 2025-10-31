@@ -7,6 +7,7 @@ import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.provider.Settings
@@ -28,7 +29,9 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
@@ -39,12 +42,17 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AddAlert
 import androidx.compose.material.icons.filled.AddLocation
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Email
 import androidx.compose.material.icons.filled.EventAvailable
 import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.NotificationsActive
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.Divider
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExposedDropdownMenuBox
@@ -75,14 +83,18 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.core.content.edit
 import androidx.core.graphics.toColorInt
+import androidx.core.net.toUri
 import com.google.accompanist.swiperefresh.SwipeRefresh
 import com.google.accompanist.swiperefresh.rememberSwipeRefreshState
 import it.buonacaccia.app.R
@@ -120,6 +132,8 @@ class MainActivity : ComponentActivity() {
 
         val deepId = intent?.getStringExtra("open_event_id")
         val deepTitle = intent?.getStringExtra("open_event_title")
+        val forceRefresh = intent?.getBooleanExtra("force_refresh", false) == true
+        val openInfo = intent?.getBooleanExtra("open_info", false) == true
 
         setContent {
             // Read theme preference and calculate boolean for Theme wrapper
@@ -139,12 +153,9 @@ class MainActivity : ComponentActivity() {
                     deepLinkEventId = deepId,
                     deepLinkTitle = deepTitle,
                     themeMode = themeMode,
-                    onChangeTheme = { mode ->
-                        // ✅ call suspend from a coroutine
-                        activityScope.launch {
-                            EventStore.setThemeMode(ctx, mode)
-                        }
-                    }
+                    onChangeTheme = { mode -> activityScope.launch { EventStore.setThemeMode(ctx, mode) } },
+                    forceRefresh = forceRefresh,
+                    initialShowInfo = openInfo
                 )
             }
         }
@@ -201,7 +212,9 @@ private fun MainScreen(
     deepLinkEventId: String? = null,
     deepLinkTitle: String? = null,
     themeMode: EventStore.ThemeMode,
-    onChangeTheme: (EventStore.ThemeMode) -> Unit
+    onChangeTheme: (EventStore.ThemeMode) -> Unit,
+    forceRefresh: Boolean = false,
+    initialShowInfo: Boolean = false
 ) {
     val context = LocalContext.current
     val cached by EventStore.cachedEventsFlow(context).collectAsState(initial = emptyList())
@@ -235,7 +248,7 @@ private fun MainScreen(
     // Multi-selection dialog types
     var showTypesDialog by remember { mutableStateOf(false) }
     var showRegionsDialog by remember { mutableStateOf(false) }
-    var showInfo by remember { mutableStateOf(false) }
+    var showInfo by remember { mutableStateOf(initialShowInfo) }
 
     // List of available types (derived from current events)
     val availableTypes = remember(state.items) {
@@ -493,6 +506,9 @@ private fun MainScreen(
             }
         )
     }
+    LaunchedEffect(forceRefresh) {
+        if (forceRefresh) vm.refresh()
+    }
 }
 
 @Composable
@@ -711,6 +727,7 @@ private fun InfoScreen(
         }
     ) { padding ->
         val scroll = rememberScrollState()
+        val ctx = LocalContext.current
 
         Column(
             modifier = Modifier
@@ -720,28 +737,158 @@ private fun InfoScreen(
                 .verticalScroll(scroll),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
+            // Tema
             Text("Tema", style = MaterialTheme.typography.titleMedium)
             ThemeChooserRow(
                 current = themeMode,
                 onChange = onChangeTheme
             )
 
-            Spacer(Modifier.height(8.dp))
+            Divider()
+
+            // Legenda colori eventi
             Text("Legenda colori eventi", style = MaterialTheme.typography.titleMedium)
             LegendRow(colorHex = "#4CAF50", label = "Iscrizioni aperte (verde)")
             LegendRow(colorHex = "#FFEB3B", label = "Attenzione / quasi pieno (giallo)")
             LegendRow(colorHex = "#9C27B0", label = "Lista d’attesa (viola)")
             LegendRow(colorHex = "#F44336", label = "Iscrizioni chiuse (rosso)")
 
-            Spacer(Modifier.height(8.dp))
-            Text("Suggerimenti", style = MaterialTheme.typography.titleMedium)
-            Text("• Filtra per Regione e Branca.\n• La barra di ricerca ha la “X” per cancellare.\n• Notifiche: nuovi eventi; 7/1 giorno prima e il giorno di apertura (prima delle 9:00); 1 giorno prima della chiusura.")
+            Divider()
 
-            Spacer(Modifier.height(8.dp))
+            // How to follow an event
+            Text("Come seguire un evento", style = MaterialTheme.typography.titleMedium)
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                Surface(
+                    shape = CircleShape,
+                    tonalElevation = 2.dp,
+                    color = MaterialTheme.colorScheme.primaryContainer
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Filled.NotificationsActive,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.onPrimaryContainer
+                        )
+                        Text(
+                            "Tocca la campanella nella card per seguire / smettere di seguire",
+                            color = MaterialTheme.colorScheme.onPrimaryContainer,
+                            style = MaterialTheme.typography.labelLarge
+                        )
+                    }
+                }
+            }
+            Text(
+                "Gli eventi seguiti possono essere filtrati con il toggle \"Pin\" nella barra dei filtri.",
+                style = MaterialTheme.typography.bodySmall
+            )
+
+            Divider()
+
+            // How notifications work
+            Text("Come funzionano le notifiche", style = MaterialTheme.typography.titleMedium)
+            Row(
+                verticalAlignment = Alignment.Top,
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                Icon(
+                    imageVector = Icons.Filled.Notifications,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary
+                )
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Text("• Nuovo evento: quando viene rilevato dal parser.", style = MaterialTheme.typography.bodySmall)
+                    Text("• Apertura iscrizioni: 7 giorni prima, 1 giorno prima e il giorno stesso (prima delle 9:00).", style = MaterialTheme.typography.bodySmall)
+                    Text("• Chiusura iscrizioni: 1 giorno prima.", style = MaterialTheme.typography.bodySmall)
+                    Text("Puoi limitare i tipi/regioni per le notifiche dal pulsante a campanella nella top bar.", style = MaterialTheme.typography.bodySmall)
+                }
+            }
+
+            Divider()
+
+            // Scaricamento
             Text("Scaricamento iniziale", style = MaterialTheme.typography.titleMedium)
-            Text("Se non vedi ancora eventi, l’app sta scaricando la lista. Rimani online: appena pronti compariranno in automatico.")
+            Text(
+                "Se non vedi ancora eventi, l’app sta scaricando la lista. Rimani online: appena pronti compariranno in automatico. " +
+                        "Gli eventi scaduti vengono rimossi automaticamente dalla memoria.",
+                style = MaterialTheme.typography.bodySmall
+            )
 
-            Spacer(Modifier.height(24.dp)) // some space at the bottom
+            Divider()
+
+            // Suggest improvements
+            Text("Suggerisci miglioramenti", style = MaterialTheme.typography.titleMedium)
+            Text(
+                "Hai un’idea o hai trovato un bug? Scrivimi: ogni feedback aiuta a migliorare l’app!",
+                style = MaterialTheme.typography.bodySmall
+            )
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth(),
+                contentAlignment = Alignment.Center
+            ) {
+                // Custom button with gradient and consistent colors
+                Button(
+                    onClick = {
+                        val to = "matteo.lagioia@gmail.com"
+                        val subject = Uri.encode("Suggerimento per BuonaCaccia app")
+                        val body = Uri.encode(
+                            "Ciao, vorrei suggerire...\n\n" +
+                                    "Versione app: <inserisci>\nDispositivo: <inserisci>\n"
+                        )
+                        val intent = Intent(
+                            Intent.ACTION_SENDTO,
+                            "mailto:$to?subject=$subject&body=$body".toUri()
+                        )
+                        try { ctx.startActivity(intent) } catch (_: Exception) {}
+                    },
+                    modifier = Modifier
+                        .height(52.dp)
+                        .widthIn(min = 240.dp)
+                        .clip(RoundedCornerShape(30.dp))
+                        .background(
+                            brush = Brush.horizontalGradient(
+                                colors = listOf(
+                                    MaterialTheme.colorScheme.primary,
+                                    MaterialTheme.colorScheme.tertiary
+                                )
+                            )
+                        ),
+                    elevation = ButtonDefaults.buttonElevation(
+                        defaultElevation = 6.dp,
+                        pressedElevation = 10.dp
+                    ),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = Color.Transparent,
+                        contentColor = Color.White
+                    ),
+                    contentPadding = PaddingValues(horizontal = 20.dp, vertical = 10.dp),
+                    shape = RoundedCornerShape(30.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Filled.Email,
+                        contentDescription = null,
+                        modifier = Modifier.size(22.dp),
+                        tint = Color.White
+                    )
+                    Spacer(Modifier.width(10.dp))
+                    Text(
+                        "Scrivi un suggerimento",
+                        style = MaterialTheme.typography.labelLarge.copy(
+                            fontWeight = FontWeight.SemiBold,
+                            letterSpacing = 0.3.sp
+                        )
+                    )
+                }
+            }
+
+            Spacer(Modifier.height(24.dp)) // deep breath
         }
     }
 }

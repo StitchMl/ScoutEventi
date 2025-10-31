@@ -44,12 +44,25 @@ import it.buonacaccia.app.data.EventStore
 import kotlinx.coroutines.launch
 import java.time.format.DateTimeFormatter
 import java.util.Locale
+import android.provider.CalendarContract
+import androidx.compose.material.icons.filled.EventAvailable
+import androidx.compose.material3.AssistChipDefaults
+import java.time.ZoneId
 
 private fun branchColor(branch: Branch?): Color = when (branch) {
     Branch.RS   -> Color(0xFFEF5350) // rosso
     Branch.EG   -> Color(0xFF66BB6A) // verde
     Branch.LC   -> Color(0xFFFFCA28) // giallo
     Branch.CAPI, null -> Color(0xFF8E24AA) // viola default
+}
+
+private fun startMillisAllDay(date: java.time.LocalDate): Long =
+    date.atStartOfDay(ZoneId.systemDefault()).toInstant().toEpochMilli()
+
+private fun endMillisAllDayInclusive(start: java.time.LocalDate, end: java.time.LocalDate?): Long {
+    // If there is an endDate, I use the following day as the exclusive end date; otherwise, 1 day after the start date.
+    val last = (end ?: start).plusDays(1)
+    return last.atStartOfDay(ZoneId.systemDefault()).toInstant().toEpochMilli()
 }
 
 @Composable
@@ -201,6 +214,43 @@ fun EventCard(ev: BcEvent, modifier: Modifier = Modifier) {
 
             enrolledDisplay?.takeIf { it.isNotBlank() }?.let {
                 Text("Iscritti: $it", style = MaterialTheme.typography.bodySmall)
+            }
+
+            // "Add to calendar" button if I have at least the start date
+            (ev.startDate)?.let { sDate ->
+                Spacer(Modifier.height(8.dp))
+
+                // Chip stile Material3
+                AssistChip(
+                    onClick = {
+                        val begin = startMillisAllDay(sDate)
+                        val end   = endMillisAllDayInclusive(sDate, ev.endDate)
+                        val intent = Intent(Intent.ACTION_INSERT).apply {
+                            data = CalendarContract.Events.CONTENT_URI
+                            putExtra(CalendarContract.EXTRA_EVENT_ALL_DAY, true)
+                            putExtra(CalendarContract.Events.TITLE, ev.title)
+                            ev.location?.let { putExtra(CalendarContract.Events.EVENT_LOCATION, it) }
+                            putExtra(CalendarContract.EXTRA_EVENT_BEGIN_TIME, begin)
+                            putExtra(CalendarContract.EXTRA_EVENT_END_TIME, end)
+                            // Note: no permission required; the user confirms in the calendar
+                        }
+                        ctx.startActivity(intent)
+                    },
+                    label = { Text("Aggiungi al calendario") },
+                    leadingIcon = {
+                        Icon(
+                            imageVector = Icons.Filled.EventAvailable,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.primary
+                        )
+                    },
+                    colors = AssistChipDefaults.assistChipColors(
+                        containerColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.10f),
+                        labelColor = MaterialTheme.colorScheme.onSurface,
+                        leadingIconContentColor = MaterialTheme.colorScheme.primary
+                    ),
+                    shape = RoundedCornerShape(10.dp)
+                )
             }
         }
     }

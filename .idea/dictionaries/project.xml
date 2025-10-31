@@ -1,7 +1,10 @@
 <component name="ProjectDictionaryState">
   <dictionary name="project">
     <words>
+      <w>aggiorna</w>
       <w>aggiornati</w>
+      <w>aggiungi</w>
+      <w>aiuta</w>
       <w>amministrativo</w>
       <w>analizzati</w>
       <w>annulla</w>
@@ -17,12 +20,14 @@
       <w>arancione</w>
       <w>attenzione</w>
       <w>attuali</w>
+      <w>automaticamente</w>
       <w>automatico</w>
       <w>avviato</w>
       <w>baef</w>
       <w>buona</w>
       <w>buonacaccia</w>
       <w>caccia</w>
+      <w>calendario</w>
       <w>canali</w>
       <w>cancellare</w>
       <w>capi</w>
@@ -49,6 +54,7 @@
       <w>dettagli</w>
       <w>disponibile</w>
       <w>disponibili</w>
+      <w>dispositivo</w>
       <w>domani</w>
       <w>dorg</w>
       <w>d’aosta</w>
@@ -59,11 +65,14 @@
       <w>errorlevel</w>
       <w>escludi</w>
       <w>esploratori</w>
+      <w>essere</w>
       <w>eventi</w>
       <w>evento</w>
       <w>filtra</w>
+      <w>filtrati</w>
       <w>filtri</w>
       <w>formazione</w>
+      <w>funzionano</w>
       <w>giorni</w>
       <w>giorno</w>
       <w>goodhunting</w>
@@ -73,6 +82,7 @@
       <w>iniziale</w>
       <w>inizializzati</w>
       <w>inizializzato</w>
+      <w>inserisci</w>
       <w>iscritti</w>
       <w>iscriversi</w>
       <w>iscrivibili</w>
@@ -82,6 +92,7 @@
       <w>lascia</w>
       <w>lato</w>
       <w>legenda</w>
+      <w>limitare</w>
       <w>lista</w>
       <w>localita</w>
       <w>località</w>
@@ -95,6 +106,8 @@
       <w>l’iscrizione</w>
       <w>marche</w>
       <w>metodologico</w>
+      <w>miglioramenti</w>
+      <w>migliorare</w>
       <w>momento</w>
       <w>nessun</w>
       <w>nessuna</w>
@@ -104,9 +117,11 @@
       <w>nuovi</w>
       <w>nuovo</w>
       <w>oggi</w>
+      <w>ogni</w>
       <w>partenza</w>
       <w>piemonte</w>
       <w>pieno</w>
+      <w>possono</w>
       <w>posti</w>
       <w>predefinito</w>
       <w>promemoria</w>
@@ -115,7 +130,9 @@
       <w>prossimi</w>
       <w>pubblicati</w>
       <w>puglia</w>
+      <w>pulsante</w>
       <w>puoi</w>
+      <w>quando</w>
       <w>quelli</w>
       <w>regione</w>
       <w>regioni</w>
@@ -127,18 +144,24 @@
       <w>ricevere</w>
       <w>ricordare</w>
       <w>rientro</w>
+      <w>rilevato</w>
       <w>rimani</w>
+      <w>rimossi</w>
       <w>rosso</w>
       <w>salva</w>
       <w>sardegna</w>
       <w>scadenza</w>
+      <w>scaduti</w>
       <w>scaricamento</w>
       <w>scaricando</w>
       <w>scolte</w>
       <w>sconosciuta</w>
       <w>scorzè</w>
+      <w>scrivi</w>
+      <w>scrivimi</w>
       <w>scuro</w>
       <w>segui</w>
+      <w>seguire</w>
       <w>seguiti</w>
       <w>seguito</w>
       <w>seleziona</w>
@@ -149,10 +172,15 @@
       <w>silenziare</w>
       <w>silenziati</w>
       <w>sistema</w>
+      <w>smettere</w>
       <w>specificato</w>
       <w>startupmgr</w>
       <w>stato</w>
+      <w>stesso</w>
       <w>suggerimenti</w>
+      <w>suggerimento</w>
+      <w>suggerire</w>
+      <w>suggerisci</w>
       <w>systemmanager</w>
       <w>tbody</w>
       <w>tema</w>
@@ -160,13 +188,20 @@
       <w>tipi</w>
       <w>tipo</w>
       <w>titolo</w>
+      <w>tocca</w>
       <w>toscana</w>
       <w>tranne</w>
+      <w>trovato</w>
       <w>tutto</w>
       <w>ultimi</w>
       <w>unità</w>
+      <w>un’idea</w>
       <w>valdaosta</w>
       <w>vedi</w>
+      <w>vengono</w>
+      <w>versione</w>
+      <w>viene</w>
+      <w>vorrei</w>
       <w>vuoto</w>
       <w>workmanager</w>
     </words>
