@@ -49,7 +49,6 @@ object HtmlParser {
                 }
             }
             if (iTitle == -1) {
-                Timber.w("Row skipped: could not find event link (title). Row HTML: %s", tr.html())
                 return@mapNotNull null
             }
             Timber.d("Row link candidate: %s", cells.select("a[href]").joinToString { it.attr("href") })
@@ -57,7 +56,6 @@ object HtmlParser {
             val link = cells[iTitle].selectFirst("a[href]") ?: return@mapNotNull null
             val title = link.text().trim()
             if (title.isBlank()) {
-                Timber.w("Row skipped: event title is blank. Row HTML: %s", tr.html())
                 return@mapNotNull null
             }
 
@@ -76,6 +74,9 @@ object HtmlParser {
                 else -> region
             }
             val start    = parseDate(cells.getOrNull(iTitle + 2)?.text())                // "23/10/2025"
+            if (start?.isBefore(LocalDate.now()) == true) {
+                return@mapNotNull null // Skip event if it is in the past
+            }
             val end      = parseDate(cells.getOrNull(iTitle + 3)?.text())                // "28/10/2025"
             val fee      = cells.getOrNull(iTitle + 4)?.text()?.trim()?.ifBlank { null } // "20,00 €"
             val location = cells.getOrNull(iTitle + 5)?.text()?.trim()?.ifBlank { null } // "Ivrea (TO)"
@@ -177,9 +178,9 @@ object HtmlParser {
         val seats = doc.selectFirst("#MainContent_EventFormView_lbSeats")?.text()?.trim()
         val taken = doc.selectFirst("#MainContent_EventFormView_lbTaken")?.text()?.trim()
 
-        Timber.d("SubsWindow extracted: opening=%s closing=%s seats=%s taken=%s",
+        /**Timber.d("SubsWindow extracted: opening=%s closing=%s seats=%s taken=%s",
             open, close, seats, taken
-        )
+        )**/
 
         if (open == null && close == null) {
             Timber.w("SubsWindow: no opening/closing dates found in detail HTML.")
