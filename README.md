@@ -16,6 +16,7 @@
 
 ### 🔔 Sistema di notifiche
 Le notifiche vengono generate automaticamente dai **Worker** in background:
+
 | Tipo | Condizione | Descrizione |
 |------|-------------|-------------|
 | 🆕 **Nuovo evento** | appena scoperto un evento non ancora visto | Notifica istantanea |

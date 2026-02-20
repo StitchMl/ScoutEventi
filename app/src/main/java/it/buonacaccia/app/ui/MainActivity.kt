@@ -2,6 +2,7 @@
 
 package it.buonacaccia.app.ui
 
+import java.time.LocalDate
 import android.Manifest
 import android.content.ComponentName
 import android.content.Context
@@ -276,14 +277,15 @@ private fun MainScreen(
                     ) {
                         Icon(Icons.Default.Refresh, contentDescription = "Refresh")
                     }
-                    IconButton(onClick = { showTypesDialog = true }) {
+                    IconButton(onClick = { if (!showTypesDialog) showTypesDialog = true }) {
                         Icon(Icons.Default.AddAlert, contentDescription = "Filtri notifiche")
                     }
-                    IconButton(onClick = { showRegionsDialog = true }) {
+
+                    IconButton(onClick = { if (!showRegionsDialog) showRegionsDialog = true }) {
                         Icon(Icons.Default.AddLocation, contentDescription = "Regioni notifiche")
                     }
-                    // 🆕 Info button
-                    IconButton(onClick = { showInfo = true }) {
+
+                    IconButton(onClick = { if (!showInfo) showInfo = true }) {
                         Icon(Icons.Default.Info, contentDescription = "Info")
                     }
                 }
@@ -337,9 +339,22 @@ private fun MainScreen(
                 onRefresh = { if (!state.loading) vm.refresh() },
             ) {
                 val base: List<BcEvent> = vm.filtered
+
                 val events: List<BcEvent> =
-                    if (onlyFollowed) base.filter { ev -> EventStore.eventKeyOf(ev) in subscribedIds }
-                    else base
+                    if (onlyFollowed) {
+                        base
+                            .asSequence()
+                            .filter { ev -> EventStore.eventKeyOf(ev) in subscribedIds }
+                            // ✅ Order by event date (nearest first). Null at the bottom.
+                            .sortedWith(
+                                compareBy(
+                                    { it.startDate ?: it.endDate ?: LocalDate.MAX },
+                                    { it.endDate ?: LocalDate.MAX },
+                                    { it.title.lowercase() }
+                                )
+                            )
+                            .toList()
+                    } else base
                 if (events.isEmpty() && !state.loading) {
                     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                         Text("No events found")
@@ -350,7 +365,9 @@ private fun MainScreen(
                         contentPadding = PaddingValues(12.dp),
                         verticalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
-                        items(events) { ev -> EventCard(ev = ev) }
+                        items(events, key = { ev -> EventStore.eventKeyOf(ev) }) { ev ->
+                            EventCard(ev = ev)
+                        }
                         item { Spacer(Modifier.height(24.dp)) }
                     }
                 }

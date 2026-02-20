@@ -27,7 +27,7 @@ class NewEventsWorker(
     @RequiresApi(Build.VERSION_CODES.TIRAMISU)
     override suspend fun doWork(): Result = try {
         Timber.d("NewEventsWorker.start")
-        val events = repo.fetch()
+        val events = repo.fetch(enrichPredicate = { false })
         Timber.d("downloaded events=%d", events.size)
 
         // ✅ Refresh Cache

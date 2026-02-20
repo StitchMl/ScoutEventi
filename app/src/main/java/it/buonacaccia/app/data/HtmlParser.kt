@@ -43,10 +43,7 @@ object HtmlParser {
 
             // 4) find the cell that contains the LINK to the event (it is ALWAYS the Title)
             val iTitle = cells.indexOfFirst {
-                it.select("a[href]").any { a ->
-                    val h = a.attr("href")
-                    h.contains("event.aspx", ignoreCase = true) || h.contains("/event.aspx", ignoreCase = true)
-                }
+                it.select("a[href]").any { a -> isEventLink(a.attr("href")) }
             }
             if (iTitle == -1) {
                 return@mapNotNull null
@@ -147,25 +144,46 @@ object HtmlParser {
         return null
     }
 
+    private fun isEventLink(href: String): Boolean {
+        val h = href.lowercase(Locale.ROOT)
+        if ("event.aspx" in h) return true
+        // rewrite style: /event?e=123
+        if (h.contains("/event") && h.contains("e=")) return true
+        // path style (if it ever arrives): /event/12345
+        if (Regex("/event/\\d+").containsMatchIn(h)) return true
+        return false
+    }
+
     /** Find the table that contains the expected headers. */
     private fun findEventsTable(doc: Document): Element? {
+        // ✅ Stable hook (present in the current list)
+        doc.selectFirst("table#MainContent_EventsGridView")?.let { return it }
+
+        // Fallback: any table with expected headers
         val tables = doc.select("table")
         return tables.firstOrNull { table ->
-            val headers = table.select("th").map { it.text().trim().lowercase(Locale.ITALY) }
-            listOf("titolo", "regione", "partenza", "rientro").all { h -> headers.any { it.contains(h) } }
+            val headers = table.select("th")
+                .map { it.text().trim().lowercase(Locale.ITALY) }
+            listOf("titolo", "regione", "partenza", "rientro")
+                .all { h -> headers.any { it.contains(h) } }
         } ?: doc.selectFirst("table")
     }
 
     @RequiresApi(Build.VERSION_CODES.TIRAMISU)
     private fun extractEventId(url: String): String? {
-        // es: https://buonacaccia.net/event.aspx?e=12345
         val q = url.substringAfter('?', "")
-        if (q.isEmpty()) return null
-        val params = q.split('&').mapNotNull {
-            val parts = it.split('=', limit = 2)
-            if (parts.size == 2) parts[0] to URLDecoder.decode(parts[1], "UTF-8") else null
-        }.toMap()
-        return params["e"]
+        if (q.isNotEmpty()) {
+            val params = q.split('&').mapNotNull {
+                val parts = it.split('=', limit = 2)
+                if (parts.size == 2) parts[0].lowercase(Locale.ROOT) to URLDecoder.decode(parts[1], "UTF-8") else null
+            }.toMap()
+            params["e"]?.let { return it }
+        }
+        // fallback: search for e=123 throughout the entire string
+        Regex("(?i)[?&]e=(\\d+)").find(url)?.groupValues?.getOrNull(1)?.let { return it }
+        // fallback path: /event/123
+        Regex("(?i)/event/(\\d+)").find(url)?.groupValues?.getOrNull(1)?.let { return it }
+        return null
     }
 
     @RequiresApi(Build.VERSION_CODES.TIRAMISU)
@@ -173,14 +191,30 @@ object HtmlParser {
         val doc = Jsoup.parse(html)
         fun grab(id: String): LocalDate? = parseDate(doc.selectFirst("#$id")?.text())
 
-        val open  = grab("MainContent_EventFormView_lbSubsFrom")
-        val close = grab("MainContent_EventFormView_lbSubsTo")
-        val seats = doc.selectFirst("#MainContent_EventFormView_lbSeats")?.text()?.trim()
-        val taken = doc.selectFirst("#MainContent_EventFormView_lbTaken")?.text()?.trim()
+        var open  = grab("MainContent_EventFormView_lbSubsFrom")
+        var close = grab("MainContent_EventFormView_lbSubsTo")
+        var seats = doc.selectFirst("#MainContent_EventFormView_lbSeats")?.text()?.trim()
+        var taken = doc.selectFirst("#MainContent_EventFormView_lbTaken")?.text()?.trim()
 
-        /**Timber.d("SubsWindow extracted: opening=%s closing=%s seats=%s taken=%s",
-            open, close, seats, taken
-        )**/
+        // ✅ Textual fallback (more resilient to ID/markup changes)
+        val text = doc.text()
+
+        if (open == null) {
+            Regex("(?i)apriranno\\s+il\\s+(\\d{1,2}/\\d{1,2}/\\d{4})")
+                .find(text)?.groupValues?.getOrNull(1)?.let { open = parseDate(it) }
+        }
+        if (close == null) {
+            Regex("(?i)chiuderanno\\s+il\\s+(\\d{1,2}/\\d{1,2}/\\d{4})")
+                .find(text)?.groupValues?.getOrNull(1)?.let { close = parseDate(it) }
+        }
+        if (seats == null) {
+            Regex("""posti\s+disponibili:\s*([0-9]+(?:/[0-9]+)?)""", RegexOption.IGNORE_CASE)
+                .find(text)?.groupValues?.getOrNull(1)?.let { seats = it }
+        }
+        if (taken == null) {
+            Regex("(?i)al\\s+momento\\s+ci\\s+sono\\s+(\\d+)\\s+iscritt")
+                .find(text)?.groupValues?.getOrNull(1)?.let { taken = it }
+        }
 
         if (open == null && close == null) {
             Timber.w("SubsWindow: no opening/closing dates found in detail HTML.")

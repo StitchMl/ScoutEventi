@@ -1,11 +1,13 @@
+import com.android.build.api.dsl.ApplicationExtension
+import org.gradle.kotlin.dsl.configure
+
 plugins {
     alias(libs.plugins.androidApplication)
-    alias(libs.plugins.kotlinAndroid)
     alias(libs.plugins.compose)
     alias(libs.plugins.ksp)
 }
 
-android {
+configure<ApplicationExtension> {
     namespace = "it.buonacaccia.app"
     compileSdk = 36
 
@@ -13,8 +15,8 @@ android {
         applicationId = "it.buonacaccia.app"
         minSdk = 26
         targetSdk = 36
-        versionCode = 3
-        versionName = "3.3"
+        versionCode = 4
+        versionName = "4.0"
         vectorDrawables { useSupportLibrary = true }
     }
 
@@ -40,9 +42,7 @@ android {
     }
 
     packaging {
-        jniLibs {
-            useLegacyPackaging = true
-        }
+        jniLibs { useLegacyPackaging = true }
     }
 }
 

@@ -35,7 +35,12 @@ class SubscriptionsWorker(
             Timber.d("SubscriptionsWorker avviato")
 
             // 1) Update cache remotely
-            val latest = repo.fetch(all = true)
+            val subscribed = EventStore.subscribedIdsFlow(applicationContext).first()
+
+            val latest = repo.fetch(
+                all = true,
+                enrichPredicate = { ev -> EventStore.eventKeyOf(ev) in subscribed }
+            )
             EventStore.upsertEvents(applicationContext, latest)
 
             // 2) Purge events with closed enrollment
@@ -44,7 +49,6 @@ class SubscriptionsWorker(
             // 3) Upload current cache + set reminders already sent
             val events = EventStore.cachedEventsFlow(applicationContext).first()
             val sent = EventStore.sentRemindersFlow(applicationContext).first().toMutableSet()
-            val subscribed = EventStore.subscribedIdsFlow(applicationContext).first()
 
             // Consider ONLY those events that are subscribed
             val toRemind = events.filter { ev ->

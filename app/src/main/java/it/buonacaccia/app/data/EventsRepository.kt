@@ -4,76 +4,141 @@ import android.os.Build
 import androidx.annotation.RequiresApi
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import okhttp3.HttpUrl.Companion.toHttpUrl
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import timber.log.Timber
+import java.io.IOException
+import java.security.MessageDigest
 
 class EventsRepository(
     private val client: OkHttpClient
 ) {
-    private val base = "https://buonacaccia.net/Events.aspx"
+    // Primary: unified address. Fallback: historical.
+    private val bases = listOf(
+        "https://buonacaccia.agesci.it/Events.aspx",
+        "https://buonacaccia.net/Events.aspx",
+    )
 
     @RequiresApi(Build.VERSION_CODES.TIRAMISU)
-    suspend fun fetch(all: Boolean = true, queryParams: Map<String, String> = emptyMap()): List<BcEvent> =
-        withContext(Dispatchers.IO) {
-            val url = buildUrl(all, queryParams)
-            Timber.d("EventsRepository.fetch url=%s", url)
-            val req = Request.Builder().url(url).get().build()
-            client.newCall(req).execute().use { resp ->
-                val body = resp.body.string()
-                Timber.d("EventsRepository.fetch resp=%s bytes=%d", resp.code, body.length)
-                if (!resp.isSuccessful || body.isBlank()) return@use emptyList()
+    suspend fun fetch(
+        all: Boolean = true,
+        queryParams: Map<String, String> = emptyMap(),
+        enrichPredicate: (BcEvent) -> Boolean = { false }, // ✅ default: no N+1 on details
+    ): List<BcEvent> = withContext(Dispatchers.IO) {
 
-                // 1) parse base list
-                val baseEvents = HtmlParser.parseEvents(body, base)
+        var lastError: Throwable? = null
 
-                // 2) enrich with enrollment dates taken from detailUrl
-                //    (sequential for simplicity/robustness; you can parallelize in the future)
-                val enriched = baseEvents.map { ev ->
-                    runCatching {
-                        val detailHtml = fetchDetail(ev.detailUrl)
-                        val subs = HtmlParser.parseSubscriptions(detailHtml)
-                        val copy = ev.copy(
-                            subsOpenDate = subs.opening,
-                            subsCloseDate = subs.closing
-                        )
-                        Timber.d(
-                            "Subs dates for id=%s title=%s open=%s close=%s",
-                            copy.id, copy.title, copy.subsOpenDate, copy.subsCloseDate
-                        )
-                        copy
-                    }.onFailure {
-                        Timber.w(it, "Unable to enrich event %s (%s)", ev.id, ev.detailUrl)
-                    }.getOrElse { ev } // in case of an error, returns the base event
-                }
-
-                enriched
-            }
-        }
-
-    @RequiresApi(Build.VERSION_CODES.TIRAMISU)
-    suspend fun fetchDetail(detailUrl: String): String =
-        withContext(Dispatchers.IO) {
-            Timber.d("EventsRepository.fetchDetail url=%s", detailUrl)
-            val req = Request.Builder().url(detailUrl).get().build()
-            client.newCall(req).execute().use { resp ->
-                val text = resp.body.string()
-                Timber.d(
-                    "EventsRepository.fetchDetail resp=%s bytes=%d",
-                    resp.code, text.length
+        for (base in bases) {
+            try {
+                return@withContext fetchFromBase(
+                    base = base,
+                    all = all,
+                    queryParams = queryParams,
+                    enrichPredicate = enrichPredicate
                 )
-                text
+            } catch (t: Throwable) {
+                lastError = t
+                Timber.w(t, "Fetch failed using base=%s, trying fallback if available…", base)
             }
         }
 
-    private fun buildUrl(all: Boolean, params: Map<String, String>): String {
-        val qp = buildString {
-            if (all) append("All=1")
-            params.forEach { (k, v) ->
-                if (isNotEmpty()) append("&")
-                append("$k=$v")
+        throw (lastError ?: IOException("Unable to fetch events (unknown error)"))
+    }
+
+    @RequiresApi(Build.VERSION_CODES.TIRAMISU)
+    private suspend fun fetchFromBase(
+        base: String,
+        all: Boolean,
+        queryParams: Map<String, String>,
+        enrichPredicate: (BcEvent) -> Boolean,
+    ): List<BcEvent> {
+        val url = buildUrl(base, all, queryParams)
+        Timber.d("EventsRepository.fetch url=%s", url)
+
+        val req = Request.Builder().url(url).get().build()
+        client.newCall(req).execute().use { resp ->
+            val finalUrl = resp.request.url.toString() // ✅ Final URL after redirect
+            val ct = resp.header("Content-Type") ?: "?"
+            val body = resp.body.string()
+            val hash = body.sha256()
+
+            Timber.d(
+                "EventsRepository.fetch finalUrl=%s resp=%d ct=%s bytes=%d sha256=%s",
+                finalUrl, resp.code, ct, body.length, hash.take(12)
+            )
+
+            if (!resp.isSuccessful) {
+                throw IOException("HTTP ${resp.code} fetching $finalUrl ct=$ct")
+            }
+            if (body.isBlank()) {
+                throw IOException("Empty body fetching $finalUrl ct=$ct")
+            }
+
+            // Heuristics: if login/challenge arrives instead of the list
+            if (body.contains("Account/Login.aspx", ignoreCase = true) ||
+                body.contains("Accesso", ignoreCase = true)
+            ) {
+                throw IOException("Got login page fetching $finalUrl ct=$ct sha256=${hash.take(12)}")
+            }
+
+            val baseEvents = HtmlParser.parseEvents(body, finalUrl)
+            if (baseEvents.isEmpty()) {
+                val head = body.take(400).replace("\n", " ")
+                throw IllegalStateException(
+                    "Parsed 0 events from $finalUrl ct=$ct sha256=${hash.take(12)} head=$head"
+                )
+            }
+
+            // ✅ Enrichment ONLY for the events you need (e.g., those you "follow")
+            return baseEvents.map { ev ->
+                if (!enrichPredicate(ev)) return@map ev
+
+                runCatching {
+                    val detailHtml = fetchDetail(ev.detailUrl)
+                    val subs = HtmlParser.parseSubscriptions(detailHtml)
+                    ev.copy(
+                        subsOpenDate = subs.opening,
+                        subsCloseDate = subs.closing
+                    )
+                }.onFailure {
+                    Timber.w(it, "Unable to enrich event id=%s url=%s", ev.id, ev.detailUrl)
+                }.getOrElse { ev }
             }
         }
-        return if (qp.isNotEmpty()) "$base?$qp" else base
+    }
+
+    @RequiresApi(Build.VERSION_CODES.TIRAMISU)
+    suspend fun fetchDetail(detailUrl: String): String = withContext(Dispatchers.IO) {
+        Timber.d("EventsRepository.fetchDetail url=%s", detailUrl)
+
+        val req = Request.Builder().url(detailUrl).get().build()
+        client.newCall(req).execute().use { resp ->
+            val finalUrl = resp.request.url.toString()
+            val ct = resp.header("Content-Type") ?: "?"
+            val text = resp.body.string()
+
+            Timber.d(
+                "EventsRepository.fetchDetail finalUrl=%s resp=%d ct=%s bytes=%d sha256=%s",
+                finalUrl, resp.code, ct, text.length, text.sha256().take(12)
+            )
+
+            if (!resp.isSuccessful) throw IOException("HTTP ${resp.code} fetching $finalUrl ct=$ct")
+            if (text.isBlank()) throw IOException("Empty body fetching $finalUrl ct=$ct")
+
+            text
+        }
+    }
+
+    private fun buildUrl(base: String, all: Boolean, params: Map<String, String>) =
+        base.toHttpUrl().newBuilder().apply {
+            if (all) addQueryParameter("All", "1")
+            params.forEach { (k, v) -> addQueryParameter(k, v) }
+        }.build()
+
+    private fun String.sha256(): String {
+        val md = MessageDigest.getInstance("SHA-256")
+        val digest = md.digest(toByteArray())
+        return digest.joinToString("") { "%02x".format(it) }
     }
 }

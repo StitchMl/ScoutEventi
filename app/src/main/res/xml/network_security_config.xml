@@ -1,9 +1,11 @@
 <network-security-config>
-    <!-- Trust our CA ONLY for good hunting.net -->
     <domain-config cleartextTrafficPermitted="false">
+        <domain includeSubdomains="true">buonacaccia.agesci.it</domain>
         <domain includeSubdomains="true">buonacaccia.net</domain>
+
         <trust-anchors>
-            <!-- use a PEM in res/raw that contains the correct CA ROOT or INTERMEDIATE -->
+            <certificates src="system" />
+            <!-- Keep this ONLY if you need it for older devices and if the file actually exists. -->
             <certificates src="@raw/isrg_root_x1" />
         </trust-anchors>
     </domain-config>
