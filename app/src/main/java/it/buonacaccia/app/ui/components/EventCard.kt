@@ -1,6 +1,10 @@
 package it.buonacaccia.app.ui.components
 
+import android.app.Activity
+import android.content.ActivityNotFoundException
+import android.content.Context
 import android.content.Intent
+import android.provider.CalendarContract
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.border
@@ -8,6 +12,8 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -18,9 +24,11 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.EventAvailable
 import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.NotificationsActive
 import androidx.compose.material3.AssistChip
+import androidx.compose.material3.AssistChipDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
@@ -42,29 +50,27 @@ import it.buonacaccia.app.data.BcEvent
 import it.buonacaccia.app.data.Branch
 import it.buonacaccia.app.data.EventStore
 import kotlinx.coroutines.launch
+import timber.log.Timber
+import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.util.Locale
-import android.provider.CalendarContract
-import androidx.compose.material.icons.filled.EventAvailable
-import androidx.compose.material3.AssistChipDefaults
-import java.time.ZoneId
 
 private fun branchColor(branch: Branch?): Color = when (branch) {
-    Branch.RS   -> Color(0xFFEF5350) // rosso
-    Branch.EG   -> Color(0xFF66BB6A) // verde
-    Branch.LC   -> Color(0xFFFFCA28) // giallo
-    Branch.CAPI, null -> Color(0xFF8E24AA) // viola default
+    Branch.RS -> Color(0xFFEF5350)
+    Branch.EG -> Color(0xFF66BB6A)
+    Branch.LC -> Color(0xFFFFCA28)
+    Branch.CAPI, null -> Color(0xFF8E24AA)
 }
 
 private fun startMillisAllDay(date: java.time.LocalDate): Long =
     date.atStartOfDay(ZoneId.systemDefault()).toInstant().toEpochMilli()
 
 private fun endMillisAllDayInclusive(start: java.time.LocalDate, end: java.time.LocalDate?): Long {
-    // If there is an endDate, I use the following day as the exclusive end date; otherwise, 1 day after the start date.
     val last = (end ?: start).plusDays(1)
     return last.atStartOfDay(ZoneId.systemDefault()).toInstant().toEpochMilli()
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun EventCard(ev: BcEvent, modifier: Modifier = Modifier) {
     val tint = branchColor(ev.branch)
@@ -72,13 +78,12 @@ fun EventCard(ev: BcEvent, modifier: Modifier = Modifier) {
     val fmt = DateTimeFormatter.ofPattern("dd/MM/yyyy", Locale.ITALY)
     val scope = rememberCoroutineScope()
 
-    // Underwriting status
     val subscribedSet by EventStore.subscribedIdsFlow(ctx).collectAsState(initial = emptySet())
     val eventKey = EventStore.eventKeyOf(ev)
     val isSubscribed = eventKey in subscribedSet
 
     fun looksLikeDate(s: String) = Regex("""\b\d{1,2}/\d{1,2}/\d{4}\b""").containsMatchIn(s)
-    fun looksLikeMoney(s: String) = ('€' in s) || Regex("""\d+[.,]\d{2}""").containsMatchIn(s)
+    fun looksLikeMoney(s: String) = Regex("""€|\d+[.,]\d{2}""").containsMatchIn(s)
 
     val feeDisplay: String? = when {
         ev.fee?.let { looksLikeMoney(it) } == true -> ev.fee
@@ -99,15 +104,15 @@ fun EventCard(ev: BcEvent, modifier: Modifier = Modifier) {
         modifier = modifier
             .fillMaxWidth()
             .clickable {
-                val i = Intent(Intent.ACTION_VIEW, ev.detailUrl.toUri())
-                ctx.startActivity(i)
+                val intent = Intent(Intent.ACTION_VIEW, ev.detailUrl.toUri())
+                    .addCategory(Intent.CATEGORY_BROWSABLE)
+                launchIntentSafely(ctx, intent, "Unable to open event details for ${ev.detailUrl}")
             }
             .border(2.dp, color, RoundedCornerShape(12.dp)),
         elevation = CardDefaults.cardElevation(defaultElevation = 4.dp),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface)
     ) {
         Column(Modifier.padding(16.dp)) {
-            // Title + "Follow" button
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween
@@ -123,7 +128,6 @@ fun EventCard(ev: BcEvent, modifier: Modifier = Modifier) {
                 val activeIconColor = Color.White
                 val inactiveIconColor = MaterialTheme.colorScheme.onSurfaceVariant
 
-                // Color animations
                 val bgColor by animateColorAsState(
                     targetValue = if (isSubscribed) activeColor else inactiveColor,
                     animationSpec = tween(durationMillis = 250)
@@ -150,10 +154,11 @@ fun EventCard(ev: BcEvent, modifier: Modifier = Modifier) {
                         contentAlignment = Alignment.Center
                     ) {
                         Icon(
-                            imageVector = if (isSubscribed)
+                            imageVector = if (isSubscribed) {
                                 Icons.Filled.NotificationsActive
-                            else
-                                Icons.Filled.Notifications,
+                            } else {
+                                Icons.Filled.Notifications
+                            },
                             contentDescription = if (isSubscribed) "Seguito" else "Segui",
                             tint = iconColor,
                             modifier = Modifier.size(20.dp)
@@ -177,7 +182,10 @@ fun EventCard(ev: BcEvent, modifier: Modifier = Modifier) {
                 }
             }
 
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            FlowRow(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
                 ev.region?.takeIf { it.isNotBlank() }?.let {
                     AssistChip(onClick = {}, label = { Text(it) })
                 }
@@ -216,15 +224,13 @@ fun EventCard(ev: BcEvent, modifier: Modifier = Modifier) {
                 Text("Iscritti: $it", style = MaterialTheme.typography.bodySmall)
             }
 
-            // "Add to calendar" button if I have at least the start date
-            (ev.startDate)?.let { sDate ->
+            ev.startDate?.let { sDate ->
                 Spacer(Modifier.height(8.dp))
 
-                // Chip stile Material3
                 AssistChip(
                     onClick = {
                         val begin = startMillisAllDay(sDate)
-                        val end   = endMillisAllDayInclusive(sDate, ev.endDate)
+                        val end = endMillisAllDayInclusive(sDate, ev.endDate)
                         val intent = Intent(Intent.ACTION_INSERT).apply {
                             data = CalendarContract.Events.CONTENT_URI
                             putExtra(CalendarContract.EXTRA_EVENT_ALL_DAY, true)
@@ -232,9 +238,8 @@ fun EventCard(ev: BcEvent, modifier: Modifier = Modifier) {
                             ev.location?.let { putExtra(CalendarContract.Events.EVENT_LOCATION, it) }
                             putExtra(CalendarContract.EXTRA_EVENT_BEGIN_TIME, begin)
                             putExtra(CalendarContract.EXTRA_EVENT_END_TIME, end)
-                            // Note: no permission required; the user confirms in the calendar
                         }
-                        ctx.startActivity(intent)
+                        launchIntentSafely(ctx, intent, "Unable to open calendar insert screen for $eventKey")
                     },
                     label = { Text("Aggiungi al calendario") },
                     leadingIcon = {
@@ -253,5 +258,19 @@ fun EventCard(ev: BcEvent, modifier: Modifier = Modifier) {
                 )
             }
         }
+    }
+}
+
+private fun launchIntentSafely(context: Context, intent: Intent, failureMessage: String) {
+    if (context !is Activity) {
+        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+    }
+
+    try {
+        context.startActivity(intent)
+    } catch (e: ActivityNotFoundException) {
+        Timber.w(e, failureMessage)
+    } catch (e: RuntimeException) {
+        Timber.w(e, failureMessage)
     }
 }

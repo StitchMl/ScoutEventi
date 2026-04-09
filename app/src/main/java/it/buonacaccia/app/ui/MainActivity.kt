@@ -1,8 +1,7 @@
-@file:Suppress("DEPRECATION")
+@file:Suppress("AssignedValueIsNeverRead")
 
 package it.buonacaccia.app.ui
 
-import java.time.LocalDate
 import android.Manifest
 import android.content.ComponentName
 import android.content.Context
@@ -14,7 +13,6 @@ import android.os.Bundle
 import android.provider.Settings
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
-import androidx.annotation.RequiresApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.isSystemInDarkTheme
@@ -53,12 +51,13 @@ import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.Divider
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.ExposedDropdownMenuAnchorType
 import androidx.compose.material3.ExposedDropdownMenuBox
 import androidx.compose.material3.ExposedDropdownMenuDefaults
 import androidx.compose.material3.FilterChip
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -72,6 +71,9 @@ import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
+import androidx.compose.material3.pulltorefresh.PullToRefreshDefaults
+import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -93,11 +95,10 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.TextFieldValue
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.core.content.ContextCompat
 import androidx.core.content.edit
 import androidx.core.graphics.toColorInt
 import androidx.core.net.toUri
-import com.google.accompanist.swiperefresh.SwipeRefresh
-import com.google.accompanist.swiperefresh.rememberSwipeRefreshState
 import it.buonacaccia.app.R
 import it.buonacaccia.app.data.BcEvent
 import it.buonacaccia.app.data.EventStore
@@ -105,6 +106,7 @@ import it.buonacaccia.app.ui.components.EventCard
 import it.buonacaccia.app.ui.theme.BuonaCacciaTheme
 import kotlinx.coroutines.launch
 import org.koin.androidx.compose.koinViewModel
+import java.time.LocalDate
 
 class MainActivity : ComponentActivity() {
 
@@ -112,26 +114,20 @@ class MainActivity : ComponentActivity() {
         androidx.activity.result.contract.ActivityResultContracts.RequestPermission()
     ) { /* optional: react to the result */ }
 
-    @RequiresApi(Build.VERSION_CODES.TIRAMISU)
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        if (checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
-            requestPermissions(arrayOf(Manifest.permission.POST_NOTIFICATIONS), 1001)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            val granted = ContextCompat.checkSelfPermission(
+                this,
+                Manifest.permission.POST_NOTIFICATIONS
+            ) == PackageManager.PERMISSION_GRANTED
+
+            if (!granted) {
+                requestNotifPerm.launch(Manifest.permission.POST_NOTIFICATIONS)
+            }
         }
         // 🆕 Show battery/Huawei tips only on first startup
-        showBatteryHintsOnce()
-
-
-        // Ask permission only on API 33+
-        val granted = androidx.core.content.ContextCompat.checkSelfPermission(
-            this, Manifest.permission.POST_NOTIFICATIONS
-        ) == PackageManager.PERMISSION_GRANTED
-
-        if (!granted) {
-            requestNotifPerm.launch(Manifest.permission.POST_NOTIFICATIONS)
-        }
-
-        val deepId = intent?.getStringExtra("open_event_id")
+        val showBatteryHints = consumeBatteryHintsFlag()
         val deepTitle = intent?.getStringExtra("open_event_title")
         val forceRefresh = intent?.getBooleanExtra("force_refresh", false) == true
         val openInfo = intent?.getBooleanExtra("open_info", false) == true
@@ -151,12 +147,14 @@ class MainActivity : ComponentActivity() {
 
             BuonaCacciaTheme(darkTheme = dark) {
                 MainScreen(
-                    deepLinkEventId = deepId,
                     deepLinkTitle = deepTitle,
                     themeMode = themeMode,
                     onChangeTheme = { mode -> activityScope.launch { EventStore.setThemeMode(ctx, mode) } },
                     forceRefresh = forceRefresh,
-                    initialShowInfo = openInfo
+                    initialShowInfo = openInfo,
+                    initialShowBatteryHints = showBatteryHints,
+                    onOpenBatterySettings = { openBatteryOptimizationSettings(ctx) },
+                    onOpenAutostartSettings = { openHuaweiAutostart(ctx) }
                 )
             }
         }
@@ -164,14 +162,13 @@ class MainActivity : ComponentActivity() {
 
     // === BATTERY OPTIMIZATION & HUAWEI AUTO-START HANDLING (Play policy-safe) ===
 
-    private fun showBatteryHintsOnce() {
+    private fun consumeBatteryHintsFlag(): Boolean {
         val prefs = getSharedPreferences("bc_prefs", MODE_PRIVATE)
         val shown = prefs.getBoolean("battery_hints_shown", false)
-        if (!shown) {
-            openBatteryOptimizationSettings(this)
-            openHuaweiAutostart(this)
-            prefs.edit { putBoolean("battery_hints_shown", true) }
-        }
+        if (shown) return false
+
+        prefs.edit { putBoolean("battery_hints_shown", true) }
+        return true
     }
 
     private fun openBatteryOptimizationSettings(context: Context) {
@@ -206,16 +203,17 @@ class MainActivity : ComponentActivity() {
 
 enum class NotifyMode { ALLOWLIST, DENYLIST }
 @OptIn(ExperimentalMaterial3Api::class)
-@RequiresApi(Build.VERSION_CODES.TIRAMISU)
 @Composable
 private fun MainScreen(
     vm: EventsViewModel = koinViewModel(),
-    deepLinkEventId: String? = null,
     deepLinkTitle: String? = null,
     themeMode: EventStore.ThemeMode,
     onChangeTheme: (EventStore.ThemeMode) -> Unit,
     forceRefresh: Boolean = false,
-    initialShowInfo: Boolean = false
+    initialShowInfo: Boolean = false,
+    initialShowBatteryHints: Boolean = false,
+    onOpenBatterySettings: () -> Unit = {},
+    onOpenAutostartSettings: () -> Unit = {}
 ) {
     val context = LocalContext.current
     val cached by EventStore.cachedEventsFlow(context).collectAsState(initial = emptyList())
@@ -238,18 +236,19 @@ private fun MainScreen(
     LaunchedEffect(cached) {
         if (cached.isNotEmpty()) vm.seedFromCache(cached)
     }
-    LaunchedEffect(deepLinkEventId, deepLinkTitle) {
+    LaunchedEffect(deepLinkTitle) {
         val title = deepLinkTitle?.takeIf { it.isNotBlank() }
         if (title != null) {
             vm.onQueryChange(title)
         }
     }
-    val swipeState = rememberSwipeRefreshState(isRefreshing = state.loading)
+    val pullRefreshState = rememberPullToRefreshState()
 
     // Multi-selection dialog types
     var showTypesDialog by remember { mutableStateOf(false) }
     var showRegionsDialog by remember { mutableStateOf(false) }
     var showInfo by remember { mutableStateOf(initialShowInfo) }
+    var showBatteryHints by remember { mutableStateOf(initialShowBatteryHints) }
 
     // List of available types (derived from current events)
     val availableTypes = remember(state.items) {
@@ -327,16 +326,24 @@ private fun MainScreen(
                 onOnlyFollowedChange = { onlyFollowed = it }         // 🆕
             )
 
-            if (state.error != null) {
-                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                    Text(text = "Error: ${state.error}")
-                }
-                return@Column
+            state.error?.let { message ->
+                ErrorBanner(message = message)
             }
 
-            SwipeRefresh(
-                state = swipeState,
+            PullToRefreshBox(
+                modifier = Modifier.fillMaxSize(),
+                state = pullRefreshState,
+                isRefreshing = state.loading,
                 onRefresh = { if (!state.loading) vm.refresh() },
+                indicator = {
+                    PullToRefreshDefaults.Indicator(
+                        modifier = Modifier.align(Alignment.TopCenter),
+                        state = pullRefreshState,
+                        isRefreshing = state.loading,
+                        containerColor = MaterialTheme.colorScheme.surface,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                }
             ) {
                 val base: List<BcEvent> = vm.filtered
 
@@ -523,8 +530,48 @@ private fun MainScreen(
             }
         )
     }
+    if (showBatteryHints) {
+        AlertDialog(
+            onDismissRequest = { showBatteryHints = false },
+            confirmButton = {
+                TextButton(onClick = { showBatteryHints = false }) { Text("Chiudi") }
+            },
+            title = { Text("Ottimizzazione batteria") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Text(
+                        "Per mantenere notifiche e refresh affidabili, conviene escludere l'app dai risparmi energetici aggressivi."
+                    )
+                    TextButton(onClick = onOpenBatterySettings) {
+                        Text("Apri impostazioni batteria")
+                    }
+                    TextButton(onClick = onOpenAutostartSettings) {
+                        Text("Apri avvio automatico Huawei")
+                    }
+                }
+            }
+        )
+    }
     LaunchedEffect(forceRefresh) {
         if (forceRefresh) vm.refresh()
+    }
+}
+
+@Composable
+private fun ErrorBanner(message: String) {
+    Surface(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 12.dp, vertical = 6.dp),
+        shape = RoundedCornerShape(14.dp),
+        color = MaterialTheme.colorScheme.errorContainer
+    ) {
+        Text(
+            text = "Aggiornamento non riuscito: $message",
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+            color = MaterialTheme.colorScheme.onErrorContainer,
+            style = MaterialTheme.typography.bodyMedium
+        )
     }
 }
 
@@ -591,7 +638,7 @@ private fun FiltersRow(
             modifier = Modifier.weight(1f)
         ) {
             OutlinedTextField(
-                modifier = Modifier.menuAnchor(),
+                modifier = Modifier.menuAnchor(ExposedDropdownMenuAnchorType.PrimaryNotEditable),
                 value = selectedRegion,
                 onValueChange = {},
                 readOnly = true,
@@ -623,7 +670,7 @@ private fun FiltersRow(
             modifier = Modifier.weight(1f)
         ) {
             OutlinedTextField(
-                modifier = Modifier.menuAnchor(),
+                modifier = Modifier.menuAnchor(ExposedDropdownMenuAnchorType.PrimaryNotEditable),
                 value = unitLabel,
                 onValueChange = {},
                 readOnly = true,
@@ -761,7 +808,7 @@ private fun InfoScreen(
                 onChange = onChangeTheme
             )
 
-            Divider()
+            HorizontalDivider()
 
             // Legenda colori eventi
             Text("Legenda colori eventi", style = MaterialTheme.typography.titleMedium)
@@ -770,7 +817,7 @@ private fun InfoScreen(
             LegendRow(colorHex = "#9C27B0", label = "Lista d’attesa (viola)")
             LegendRow(colorHex = "#F44336", label = "Iscrizioni chiuse (rosso)")
 
-            Divider()
+            HorizontalDivider()
 
             // How to follow an event
             Text("Come seguire un evento", style = MaterialTheme.typography.titleMedium)
@@ -806,7 +853,7 @@ private fun InfoScreen(
                 style = MaterialTheme.typography.bodySmall
             )
 
-            Divider()
+            HorizontalDivider()
 
             // How notifications work
             Text("Come funzionano le notifiche", style = MaterialTheme.typography.titleMedium)
@@ -827,7 +874,7 @@ private fun InfoScreen(
                 }
             }
 
-            Divider()
+            HorizontalDivider()
 
             // Scaricamento
             Text("Scaricamento iniziale", style = MaterialTheme.typography.titleMedium)
@@ -837,7 +884,7 @@ private fun InfoScreen(
                 style = MaterialTheme.typography.bodySmall
             )
 
-            Divider()
+            HorizontalDivider()
 
             // Suggest improvements
             Text("Suggerisci miglioramenti", style = MaterialTheme.typography.titleMedium)

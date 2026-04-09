@@ -15,8 +15,8 @@ configure<ApplicationExtension> {
         applicationId = "it.buonacaccia.app"
         minSdk = 26
         targetSdk = 36
-        versionCode = 4
-        versionName = "4.0"
+        versionCode = 5
+        versionName = "5"
         vectorDrawables { useSupportLibrary = true }
     }
 
@@ -28,7 +28,11 @@ configure<ApplicationExtension> {
                 "proguard-rules.pro"
             )
         }
-        debug { isMinifyEnabled = false }
+        debug {
+            isMinifyEnabled = false
+            applicationIdSuffix = ".debug"
+            versionNameSuffix = "-debug"
+        }
     }
 
     compileOptions {
@@ -87,9 +91,6 @@ dependencies {
 
     // DataStore
     implementation(libs.androidx.datastore.preferences)
-
-    // Pull-to-refresh
-    implementation(libs.accompanist.swiperefresh)
 
     // Core-ktx (already included by other dependencies, but good to have)
     implementation(libs.androidx.core.ktx.v1170)

@@ -29,14 +29,25 @@ import androidx.glance.appwidget.lazy.items
 import androidx.glance.appwidget.provideContent
 import androidx.glance.appwidget.state.updateAppWidgetState
 import androidx.glance.background
-import androidx.glance.color.ColorProvider
 import androidx.glance.currentState
-import androidx.glance.layout.*
+import androidx.glance.layout.Alignment
+import androidx.glance.layout.Box
+import androidx.glance.layout.Column
+import androidx.glance.layout.Row
+import androidx.glance.layout.Spacer
+import androidx.glance.layout.fillMaxHeight
+import androidx.glance.layout.fillMaxWidth
+import androidx.glance.layout.height
+import androidx.glance.layout.padding
+import androidx.glance.layout.size
+import androidx.glance.layout.width
+import androidx.glance.layout.wrapContentHeight
 import androidx.glance.state.PreferencesGlanceStateDefinition
 import androidx.glance.text.FontWeight
 import androidx.glance.text.Text
 import androidx.glance.text.TextStyle
 import androidx.glance.unit.ColorProvider
+import androidx.work.ExistingWorkPolicy
 import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.OutOfQuotaPolicy
 import androidx.work.WorkManager
@@ -52,10 +63,9 @@ import java.time.format.DateTimeFormatter
 import java.util.Locale
 import kotlin.math.abs
 
-// === Widget-local state keys ===
 private val KEY_ONLY_FOLLOWED = booleanPreferencesKey("widget_only_followed")
+private const val WIDGET_REFRESH_WORK_NAME = "WidgetRefreshWork"
 
-// --- Palette ---
 data class WidgetPalette(
     val bg: ColorProvider,
     val card: ColorProvider,
@@ -68,14 +78,13 @@ data class WidgetPalette(
 
 class UpcomingOpeningsWidget : GlanceAppWidget() {
 
-    // ✅ enable the local state of the widget
     override val stateDefinition = PreferencesGlanceStateDefinition
 
     @SuppressLint("RestrictedApi")
     override suspend fun provideGlance(context: Context, id: GlanceId) {
         val isDark =
             (context.resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK) ==
-                    Configuration.UI_MODE_NIGHT_YES
+                Configuration.UI_MODE_NIGHT_YES
 
         val palette = if (isDark) {
             WidgetPalette(
@@ -99,26 +108,22 @@ class UpcomingOpeningsWidget : GlanceAppWidget() {
             )
         }
 
-        // “Slow” data read here (persistent)
         val today = LocalDate.now()
         val subscribedKeys = EventStore.subscribedIdsFlow(context).first()
+        val persistedOnlyFollowed = EventStore.widgetOnlyFollowedFlow(context).first()
         val cached = EventStore.cachedEventsFlow(context).first()
 
-        // The onlyFollowed filter will be read by the STATE of the widget inside provideContent.
         provideContent {
             val prefs: Preferences = currentState()
-            val onlyFollowedLocal = prefs[KEY_ONLY_FOLLOWED]
-            // fallback to global preference if state is not yet initialized
-                ?: false
+            val onlyFollowedLocal = prefs[KEY_ONLY_FOLLOWED] ?: persistedOnlyFollowed
 
-            // We filter HERE, using the local (immediate) state.
             val upcoming = cached
                 .filter { e ->
                     val open = e.subsOpenDate
                     val end = e.endDate
                     (open != null && !open.isBefore(today)) &&
-                            (end == null || !end.isBefore(today)) &&
-                            (!onlyFollowedLocal || (EventStore.eventKeyOf(e) in subscribedKeys))
+                        (end == null || !end.isBefore(today)) &&
+                        (!onlyFollowedLocal || (EventStore.eventKeyOf(e) in subscribedKeys))
                 }
                 .sortedBy { it.subsOpenDate }
                 .take(30)
@@ -133,7 +138,6 @@ class UpcomingOpeningsWidget : GlanceAppWidget() {
     }
 }
 
-// ----- UI -----
 @Composable
 private fun WidgetContent(
     ctx: Context,
@@ -148,7 +152,6 @@ private fun WidgetContent(
             .padding(12.dp)
     ) {
         Column(GlanceModifier.fillMaxWidth()) {
-
             HeaderRow(palette = palette, onlyFollowed = onlyFollowed)
 
             Spacer(GlanceModifier.height(10.dp))
@@ -163,10 +166,11 @@ private fun WidgetContent(
                     contentAlignment = Alignment.Center
                 ) {
                     Text(
-                        text = if (onlyFollowed)
+                        text = if (onlyFollowed) {
                             "Nessun evento seguito in apertura"
-                        else
-                            "Nessun evento imminente",
+                        } else {
+                            "Nessun evento imminente"
+                        },
                         style = TextStyle(color = palette.onCard2, fontSize = 13.sp)
                     )
                 }
@@ -210,7 +214,7 @@ private fun HeaderRow(palette: WidgetPalette, onlyFollowed: Boolean) {
             modifier = GlanceModifier.defaultWeight()
         )
 
-        val iconColor = ColorProvider(
+        val iconColor = androidx.glance.color.ColorProvider(
             day = Color(0xFF1C1B1F),
             night = Color(0xFFE8E8E8)
         )
@@ -223,10 +227,11 @@ private fun HeaderRow(palette: WidgetPalette, onlyFollowed: Boolean) {
         )
         Spacer(GlanceModifier.width(10.dp))
 
-        val pillBg = if (onlyFollowed)
-            ColorProvider(day = Color(0xFF01BAEF), night = Color(0xFF4FC3F7))
-        else
+        val pillBg = if (onlyFollowed) {
+            androidx.glance.color.ColorProvider(day = Color(0xFF01BAEF), night = Color(0xFF4FC3F7))
+        } else {
             ColorProvider(Color.Transparent)
+        }
 
         Box(
             modifier = GlanceModifier
@@ -260,6 +265,8 @@ private fun EventRow(
     palette: WidgetPalette,
     onClick: Action
 ) {
+    val open = e.subsOpenDate ?: return
+
     Row(
         modifier = GlanceModifier
             .fillMaxWidth()
@@ -268,11 +275,10 @@ private fun EventRow(
             .clickable(onClick = onClick)
             .padding(horizontal = 12.dp, vertical = 10.dp)
     ) {
-        val open = e.subsOpenDate!!
         val day = open.format(DateTimeFormatter.ofPattern("dd"))
         val mon = open.format(DateTimeFormatter.ofPattern("LLL", Locale.ITALIAN)).uppercase(Locale.ITALIAN)
 
-        val lane = colorFromKey(e.id ?: e.title)
+        val lane = colorFromKey(EventStore.eventKeyOf(e))
         val laneProvider = ColorProvider(lane)
 
         Box(
@@ -304,7 +310,11 @@ private fun EventRow(
 
         Spacer(GlanceModifier.width(12.dp))
 
-        Column(modifier = GlanceModifier.fillMaxWidth()) {
+        Column(
+            modifier = GlanceModifier
+                .fillMaxWidth()
+                .wrapContentHeight()
+        ) {
             Text(
                 text = e.title,
                 style = TextStyle(color = palette.onCard, fontSize = 14.sp, fontWeight = FontWeight.Bold)
@@ -327,56 +337,50 @@ private fun colorFromKey(key: String): Color {
     return palette[h % palette.size]
 }
 
-// ===== Receiver =====
 class UpcomingOpeningsWidgetReceiver : GlanceAppWidgetReceiver() {
     override val glanceAppWidget: GlanceAppWidget = UpcomingOpeningsWidget()
 }
 
-// ===== Actions =====
-
-/** Update via WorkManager and provide immediate feedback */
 class RefreshAction : ActionCallback {
     override suspend fun onAction(context: Context, glanceId: GlanceId, parameters: ActionParameters) {
         val req = OneTimeWorkRequestBuilder<WidgetRefreshWorker>()
             .setExpedited(OutOfQuotaPolicy.RUN_AS_NON_EXPEDITED_WORK_REQUEST)
             .build()
-        WorkManager.getInstance(context).enqueue(req)
+        WorkManager.getInstance(context).enqueueUniqueWork(
+            WIDGET_REFRESH_WORK_NAME,
+            ExistingWorkPolicy.REPLACE,
+            req
+        )
         UpcomingOpeningsWidget().update(context, glanceId)
     }
 }
 
-/** Toggle "followed only": IMMEDIATELY update the widget status and, at the same time, the global preference. */
 class ToggleFollowedAction : ActionCallback {
     override suspend fun onAction(
         context: Context,
         glanceId: GlanceId,
         parameters: ActionParameters
     ) {
-        // read current local status
         val curLocal = androidx.glance.appwidget.state.getAppWidgetState(
             context, PreferencesGlanceStateDefinition, glanceId
         )[KEY_ONLY_FOLLOWED] ?: false
 
         val newVal = !curLocal
 
-        // ✅ 1) update the STATE of the widget (return the modified preferences)
         updateAppWidgetState(context, PreferencesGlanceStateDefinition, glanceId) { prefs ->
             prefs.toMutablePreferences().apply {
                 this[KEY_ONLY_FOLLOWED] = newVal
             }
         }
 
-        // ✅ 2) also updates the global (persistent) preference
         withContext(Dispatchers.IO) {
             EventStore.setWidgetOnlyFollowed(context, newVal)
         }
 
-        // ✅ 3) rebuild the current widget IMMEDIATELY
         UpcomingOpeningsWidget().update(context, glanceId)
     }
 }
 
-/** Open Info */
 class OpenInfoAction : ActionCallback {
     override suspend fun onAction(context: Context, glanceId: GlanceId, parameters: ActionParameters) {
         val intent = Intent(context, MainActivity::class.java)
@@ -386,7 +390,6 @@ class OpenInfoAction : ActionCallback {
     }
 }
 
-/** Tap on event row → opens the app and filters on that event */
 private fun clickActionFor(ctx: Context, e: BcEvent): Action {
     val intent = Intent(ctx, MainActivity::class.java)
         .putExtra("open_event_id", e.id)

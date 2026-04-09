@@ -1,7 +1,5 @@
 package it.buonacaccia.app.ui
 
-import android.os.Build
-import androidx.annotation.RequiresApi
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
@@ -9,7 +7,10 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import it.buonacaccia.app.data.BcEvent
 import it.buonacaccia.app.data.Branch
+import it.buonacaccia.app.data.BuonaCacciaFilter
+import it.buonacaccia.app.data.BuonaCacciaScopes
 import it.buonacaccia.app.data.EventsRepository
+import it.buonacaccia.app.data.FetchSafety
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import kotlin.coroutines.cancellation.CancellationException
@@ -30,11 +31,9 @@ private val IT_REGIONS = listOf(
     "Abruzzo", "Basilicata", "Calabria", "Campania", "Emilia-Romagna", "Friuli-Venezia Giulia",
     "Lazio", "Liguria", "Lombardia", "Marche", "Molise", "Piemonte", "Puglia", "Sardegna",
     "Sicilia", "Toscana", "Trentino-Alto Adige", "Umbria", "Valle d'Aosta", "Veneto",
-    // short/common forms
     "Emilia Romagna", "Friuli Venezia Giulia", "Trentino", "Alto Adige", "Val d'Aosta"
 ).sortedBy { it.length }.reversed()
 
-@RequiresApi(Build.VERSION_CODES.TIRAMISU)
 class EventsViewModel(
     private val repo: EventsRepository
 ) : ViewModel() {
@@ -43,45 +42,101 @@ class EventsViewModel(
         private set
 
     private var loadJob: Job? = null
+    private var cachedSnapshot: List<BcEvent> = emptyList()
+    private var loadGeneration: Long = 0
 
     init {
         refresh()
     }
 
-    @RequiresApi(Build.VERSION_CODES.TIRAMISU)
     fun refresh() {
-        // Avoid double refresh if already in progress
-        if (loadJob?.isActive == true) return
-
-        // Delete possibly an old job
         loadJob?.cancel()
-
-        state = state.copy(loading = true, error = null)
+        val fallbackItems = if (cachedSnapshot.isNotEmpty()) cachedSnapshot else state.items
+        val scopeFilter = currentServerFilter()
+        val minimumExpectedCount = minimumExpectedCountForFullRefresh(scopeFilter)
+        val generation = ++loadGeneration
+        state = state.copy(loading = true, error = null, items = fallbackItems)
 
         loadJob = viewModelScope.launch {
             try {
-                val list = repo.fetch(all = true)
-                state = state.copy(loading = false, items = list, error = null)
+                val list = if (scopeFilter != null) {
+                    try {
+                        repo.fetchByFilters(filters = listOf(scopeFilter), all = true)
+                    } catch (ce: CancellationException) {
+                        throw ce
+                    } catch (_: Throwable) {
+                        repo.fetch(all = true, minimumExpectedCount = minimumExpectedCount)
+                    }
+                } else {
+                    repo.fetch(all = true, minimumExpectedCount = minimumExpectedCount)
+                }
+                if (generation == loadGeneration) {
+                    state = state.copy(loading = false, items = list, error = null)
+                }
             } catch (_: CancellationException) {
-                // ⚠️ cancellation is "normal": don't show it in UI
-                // Relaunch if you want to propagate to higher level:
-                // throw ce
-                state = state.copy(loading = false) // no error
+                if (generation == loadGeneration) {
+                    state = state.copy(loading = false)
+                }
             } catch (e: Exception) {
-                state = state.copy(loading = false, error = e.message ?: "Errore di rete")
+                val fallback = if (cachedSnapshot.isNotEmpty()) cachedSnapshot else state.items
+                if (generation == loadGeneration) {
+                    state = state.copy(
+                        loading = false,
+                        items = fallback,
+                        error = e.message ?: "Errore di rete"
+                    )
+                }
             }
         }
     }
 
     fun onQueryChange(q: String) { state = state.copy(query = q) }
-    fun onRegionChange(r: String?) { state = state.copy(region = r) }
-    fun onUnitChange(u: UnitFilter) { state = state.copy(unit = u) }
+    fun onRegionChange(r: String?) {
+        if (state.region == r) return
+        val previousFilter = currentServerFilter()
+        state = state.copy(region = r)
+        if (currentServerFilter() != previousFilter) {
+            refresh()
+        }
+    }
+    fun onUnitChange(u: UnitFilter) {
+        if (state.unit == u) return
+        val previousFilter = currentServerFilter()
+        state = state.copy(unit = u)
+        if (currentServerFilter() != previousFilter) {
+            refresh()
+        }
+    }
     fun onOnlyOpenChange(enabled: Boolean) { state = state.copy(onlyOpen = enabled) }
+
     fun seedFromCache(items: List<BcEvent>) {
+        cachedSnapshot = items
         if (items.isNotEmpty() && state.items.isEmpty()) {
             state = state.copy(loading = false, items = items, error = null)
         }
     }
+
+    private fun currentServerFilter(): BuonaCacciaFilter? =
+        BuonaCacciaScopes.filterOf(
+            regionName = state.region,
+            branch = selectedBranch(),
+        )
+
+    private fun minimumExpectedCountForFullRefresh(scopeFilter: BuonaCacciaFilter?): Int? {
+        if (scopeFilter != null) return null
+
+        val referenceCount = maxOf(cachedSnapshot.size, state.items.size)
+        return FetchSafety.minimumExpectedCountForFullDataset(referenceCount)
+    }
+
+    private fun selectedBranch(): Branch? =
+        when (state.unit) {
+            UnitFilter.TUTTE -> null
+            UnitFilter.BRANCO -> Branch.LC
+            UnitFilter.REPARTO -> Branch.EG
+            UnitFilter.CLAN -> Branch.RS
+            UnitFilter.CAPI -> Branch.CAPI
+        }
 
     private fun guessRegion(ev: BcEvent): String? {
         ev.region?.trim()?.takeIf { it.isNotEmpty() }?.let { return it }
@@ -101,16 +156,19 @@ class EventsViewModel(
             return state.items
                 .asSequence()
                 .filter { ev ->
-                    if (q.isBlank()) true else
+                    if (q.isBlank()) {
+                        true
+                    } else {
                         ev.title.lowercase().contains(q) ||
-                                (ev.region?.lowercase()?.contains(q) == true) ||
-                                (ev.type?.lowercase()?.contains(q) == true) ||
-                                (ev.location?.lowercase()?.contains(q) == true)
+                            (ev.region?.lowercase()?.contains(q) == true) ||
+                            (ev.type?.lowercase()?.contains(q) == true) ||
+                            (ev.location?.lowercase()?.contains(q) == true)
+                    }
                 }
                 .filter { ev ->
                     state.region == null ||
-                            state.region == "Tutte" ||
-                            guessRegion(ev)?.equals(state.region, ignoreCase = true) == true
+                        state.region == "Tutte" ||
+                        guessRegion(ev)?.equals(state.region, ignoreCase = true) == true
                 }
                 .filter { ev ->
                     when (state.unit) {
@@ -122,9 +180,11 @@ class EventsViewModel(
                     }
                 }
                 .filter { ev ->
-                    if (state.onlyOpen)
+                    if (state.onlyOpen) {
                         ev.statusColor == "green" || ev.statusColor == "yellow"
-                    else true
+                    } else {
+                        true
+                    }
                 }
                 .toList()
         }

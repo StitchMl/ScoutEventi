@@ -1,9 +1,15 @@
 package it.buonacaccia.app
 
 import android.app.Application
-import android.os.Build
-import androidx.annotation.RequiresApi
-import androidx.work.*
+import androidx.work.Configuration
+import androidx.work.Constraints
+import androidx.work.ExistingPeriodicWorkPolicy
+import androidx.work.ExistingWorkPolicy
+import androidx.work.NetworkType
+import androidx.work.OneTimeWorkRequestBuilder
+import androidx.work.OutOfQuotaPolicy
+import androidx.work.PeriodicWorkRequestBuilder
+import androidx.work.WorkManager
 import it.buonacaccia.app.background.NewEventsWorker
 import it.buonacaccia.app.background.SubscriptionsWorker
 import it.buonacaccia.app.data.EventsRepository
@@ -12,26 +18,26 @@ import it.buonacaccia.app.notify.Notifier
 import it.buonacaccia.app.ui.EventsViewModel
 import org.koin.android.ext.koin.androidContext
 import org.koin.android.ext.koin.androidLogger
-import org.koin.core.module.dsl.singleOf
-import org.koin.core.module.dsl.viewModelOf
 import org.koin.androidx.workmanager.koin.workManagerFactory
 import org.koin.core.context.startKoin
+import org.koin.core.module.dsl.singleOf
+import org.koin.core.module.dsl.viewModelOf
 import org.koin.dsl.module
 import timber.log.Timber
-import java.util.concurrent.TimeUnit
 import java.time.Duration
 import java.time.ZoneId
 import java.time.ZonedDateTime
+import java.util.concurrent.TimeUnit
 
 class App : Application(), Configuration.Provider {
 
-    @RequiresApi(Build.VERSION_CODES.TIRAMISU)
     override fun onCreate() {
         super.onCreate()
 
-        Timber.plant(Timber.DebugTree())
+        if (BuildConfig.DEBUG) {
+            Timber.plant(Timber.DebugTree())
+        }
 
-        // --- Koin setup ---
         val appModule = module {
             single<Notifier> { Notifier }
             singleOf(::EventsRepository)
@@ -46,8 +52,6 @@ class App : Application(), Configuration.Provider {
         }
 
         Notifier.ensureChannel(this)
-
-        // --- Worker Scheduling ---
         scheduleWorkers()
 
         Timber.d("Koin e WorkManager inizializzati correttamente")
@@ -64,7 +68,6 @@ class App : Application(), Configuration.Provider {
     private fun scheduleWorkers() {
         val workManager = WorkManager.getInstance(this)
 
-        // ✅ New events every 6 hours
         val newEventsWork = PeriodicWorkRequestBuilder<NewEventsWorker>(6, TimeUnit.HOURS)
             .setConstraints(
                 Constraints.Builder()
@@ -73,8 +76,7 @@ class App : Application(), Configuration.Provider {
             )
             .build()
 
-        // ✅ Reminder subscriptions once a day, at 02:00 local time
-        val initialDelayMs = delayToNextTwoAm() // next 2:00 a.m.
+        val initialDelayMs = delayToNextTwoAm()
         val subscriptionsWork = PeriodicWorkRequestBuilder<SubscriptionsWorker>(24, TimeUnit.HOURS)
             .setInitialDelay(initialDelayMs, TimeUnit.MILLISECONDS)
             .setConstraints(
@@ -84,7 +86,6 @@ class App : Application(), Configuration.Provider {
             )
             .build()
 
-        // Plan uniquely: UPDATE replaces any old config.
         workManager.enqueueUniquePeriodicWork(
             "NewEventsWork",
             ExistingPeriodicWorkPolicy.UPDATE,
@@ -97,7 +98,6 @@ class App : Application(), Configuration.Provider {
             subscriptionsWork
         )
 
-        // (Optional) one shot "right away" at first start, then periodicals take care of it
         val bootNow = OneTimeWorkRequestBuilder<NewEventsWorker>()
             .setExpedited(OutOfQuotaPolicy.RUN_AS_NON_EXPEDITED_WORK_REQUEST)
             .setConstraints(

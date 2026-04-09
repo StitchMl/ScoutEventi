@@ -1,12 +1,10 @@
 package it.buonacaccia.app.data
 
-import android.os.Build
-import androidx.annotation.RequiresApi
 import org.jsoup.Jsoup
 import org.jsoup.nodes.Document
 import org.jsoup.nodes.Element
-import java.net.URLDecoder
 import timber.log.Timber
+import java.net.URLDecoder
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
 import java.util.Locale
@@ -17,129 +15,204 @@ object HtmlParser {
         DateTimeFormatter.ofPattern("dd/MM/yyyy", Locale.ITALY),
         DateTimeFormatter.ofPattern("d/M/yyyy", Locale.ITALY)
     )
+    private val inlineDatePattern = Regex("\\b\\d{1,2}/\\d{1,2}/\\d{4}\\b")
 
-    @RequiresApi(Build.VERSION_CODES.TIRAMISU)
     fun parseEvents(html: String, baseUrl: String): List<BcEvent> {
         val doc = Jsoup.parse(html, baseUrl)
+        val today = LocalDate.now()
+        val structuredEvents = parseStructuredEvents(doc, today)
+        val flexibleEvents = parseFlexibleEvents(doc, today)
 
-        // 1) find the table with the expected headers
-        val table = findEventsTable(doc)
-        if (table == null) {
-            Timber.w("No suitable table found for events in the HTML.")
+        if (structuredEvents.isEmpty() && flexibleEvents.isEmpty()) {
+            Timber.w("No recognizable events found in the HTML.")
             return emptyList()
         }
+
+        val merged = LinkedHashMap<String, BcEvent>()
+        structuredEvents.forEach { event ->
+            merged[eventKeyOf(event)] = event
+        }
+        flexibleEvents.forEach { event ->
+            val key = eventKeyOf(event)
+            merged[key] = merged[key]?.let { structured ->
+                mergeEvent(primary = structured, fallback = event)
+            } ?: event
+        }
+
+        Timber.d(
+            "Parsed events structured=%d flexible=%d merged=%d",
+            structuredEvents.size,
+            flexibleEvents.size,
+            merged.size
+        )
+        return merged.values.toList()
+    }
+
+    fun inspectEventsPage(html: String, baseUrl: String): EventsPageInspection {
+        val doc = Jsoup.parse(html, baseUrl)
+        val table = findEventsTable(doc)
+        val uniqueEventLinks = doc
+            .select("a[href]")
+            .mapNotNull { anchor ->
+                val href = anchor.absUrl("href").ifBlank { anchor.attr("href") }
+                if (href.isBlank() || !isEventLink(href)) return@mapNotNull null
+                extractEventId(href) ?: href
+            }
+            .toSet()
+
+        val candidateRows = table
+            ?.let { eventsTable ->
+                (eventsTable.select("> tbody > tr") + eventsTable.select("> tr"))
+                    .distinct()
+                    .count { row ->
+                        row.select("> th").isEmpty() &&
+                            row.select("a[href]").any { isEventLink(it.attr("href")) }
+                    }
+            } ?: 0
+
+        return EventsPageInspection(
+            recognizableTable = table != null,
+            uniqueEventLinkCount = uniqueEventLinks.size,
+            candidateRowCount = candidateRows,
+            hasWebFormsMarkers = html.contains("__VIEWSTATE") || html.contains("__doPostBack")
+        )
+    }
+
+    fun hasRecognizableEventsTable(html: String, baseUrl: String): Boolean =
+        findEventsTable(Jsoup.parse(html, baseUrl)) != null
+
+    private fun parseStructuredEvents(doc: Document, today: LocalDate): List<BcEvent> {
+        val table = findEventsTable(doc) ?: return emptyList()
         Timber.d("Found events table.")
 
-        // 2) DATA rows: only direct children of the table, no nested <tr> / header
         val rows = (table.select("> tbody > tr") + table.select("> tr"))
             .distinct()
             .filter { row -> row.select("> th").isEmpty() && row.select("> td").isNotEmpty() }
         Timber.d("Found %d potential event rows.", rows.size)
 
-        return rows.mapNotNull { tr ->
-            // 3) cells: only direct children of the <tr>
-            val cells = tr.select("> th, > td")
-            if (cells.isEmpty()) return@mapNotNull null
+        return rows.mapNotNull { parseStructuredRow(it, today) }
+    }
 
-            // 4) find the cell that contains the LINK to the event (it is ALWAYS the Title)
-            val iTitle = cells.indexOfFirst {
-                it.select("a[href]").any { a -> isEventLink(a.attr("href")) }
-            }
-            if (iTitle == -1) {
-                return@mapNotNull null
-            }
-            Timber.d("Row link candidate: %s", cells.select("a[href]").joinToString { it.attr("href") })
+    private fun parseStructuredRow(row: Element, today: LocalDate): BcEvent? {
+        val cells = row.select("> th, > td")
+        if (cells.isEmpty()) return null
 
-            val link = cells[iTitle].selectFirst("a[href]") ?: return@mapNotNull null
-            val title = link.text().trim()
-            if (title.isBlank()) {
-                return@mapNotNull null
-            }
+        val titleIndex = cells.indexOfFirst {
+            it.select("a[href]").any { anchor -> isEventLink(anchor.attr("href")) }
+        }
+        if (titleIndex == -1) return null
 
-            val detailUrl = link.absUrl("href").ifBlank { baseUrl }
-            val id = extractEventId(detailUrl)
-            // 5) reading RELATIVE to positions with respect to the title (coincides with the structure you pasted)
-            val typeText = cells.getOrNull(0)?.text()?.trim()?.ifBlank { null }          // "ROSS", "CapiLC", ...
-            var region = cells.getOrNull(iTitle + 1)?.text()?.trim()?.ifBlank { null }
+        val link = cells[titleIndex].selectFirst("a[href]") ?: return null
+        val title = link.text().trim()
+        if (title.isBlank()) return null
 
-            // Normalize known abbreviations
-            region = when (region?.lowercase(Locale.ROOT)) {
-                "vda", "val d'aosta", "valdaosta", "valle d’aosta", "valle d'aosta" -> "Valle d'Aosta"
-                "emiro", "emilia romagna", "emilia-romagna" -> "Emilia-Romagna"
-                "taa" -> "Trentino Alto Adige"
-                "fvg" -> "Friuli Venezia Giulia"
-                else -> region
-            }
-            val start    = parseDate(cells.getOrNull(iTitle + 2)?.text())                // "23/10/2025"
-            if (start?.isBefore(LocalDate.now()) == true) {
-                return@mapNotNull null // Skip event if it is in the past
-            }
-            val end      = parseDate(cells.getOrNull(iTitle + 3)?.text())                // "28/10/2025"
-            val fee      = cells.getOrNull(iTitle + 4)?.text()?.trim()?.ifBlank { null } // "20,00 €"
-            val location = cells.getOrNull(iTitle + 5)?.text()?.trim()?.ifBlank { null } // "Ivrea (TO)"
-            val enrolled = cells.getOrNull(iTitle + 6)?.text()?.trim()?.ifBlank { null } // "35 / 30"
-            // after "Enrolled" there is a blank column, then "Status"
-            val status   = cells.getOrNull(iTitle + 8)?.text()?.trim()?.ifBlank { null }
-            // Branch from the first cell: search for the image branch_*.png
-            val branch: Branch? = cells.getOrNull(0)
-                ?.selectFirst("img[src]")
-                ?.attr("src")
-                ?.lowercase()
-                ?.let { src ->
-                    when {
-                        "branch_rs" in src -> Branch.RS
-                        "branch_eg" in src -> Branch.EG
-                        "branch_lc" in src -> Branch.LC
-                        else -> Branch.CAPI
-                    }
-                }
+        val detailUrl = link.absUrl("href").ifBlank { return null }
+        val start = parseDate(cells.getOrNull(titleIndex + 2)?.text())
+        if (start?.isBefore(today) == true) {
+            return null
+        }
 
-            val effectiveType = typeText ?: when (branch) {
-                Branch.RS -> "RS"
-                Branch.EG -> "EG"
-                Branch.LC -> "LC"
-                Branch.CAPI -> "CAPI"
-                null -> null
-            }
+        val branch = detectBranch(cells.getOrNull(0) ?: row)
+        val event = BcEvent(
+            id = extractEventId(detailUrl),
+            type = cells.getOrNull(0)?.text()?.trim()?.ifBlank { null } ?: deriveType(branch),
+            title = title,
+            region = normalizeRegion(cells.getOrNull(titleIndex + 1)?.text()),
+            startDate = start,
+            endDate = parseDate(cells.getOrNull(titleIndex + 3)?.text()),
+            fee = cells.getOrNull(titleIndex + 4)?.text()?.trim()?.ifBlank { null },
+            location = cells.getOrNull(titleIndex + 5)?.text()?.trim()?.ifBlank { null },
+            enrolled = cells.getOrNull(titleIndex + 6)?.text()?.trim()?.ifBlank { null },
+            status = cells.getOrNull(titleIndex + 8)?.text()?.trim()?.ifBlank { null },
+            detailUrl = detailUrl,
+            statusColor = detectStatusColor(row),
+            branch = branch
+        )
+        Timber.v("Parsed structured event: %s", event)
+        return event
+    }
 
-            // Look for the status image (light_*.png) in the whole row
-            val statusImgSrc = cells
-                .select("img[src]")
-                .map { it.attr("src").lowercase(Locale.ROOT) }
-                .firstOrNull { it.contains("light_") }
+    private fun parseFlexibleEvents(doc: Document, today: LocalDate): List<BcEvent> {
+        val events = LinkedHashMap<String, BcEvent>()
 
-            val statusColor = when {
-                statusImgSrc?.contains("light_green") == true -> "green"   // many places
-                statusImgSrc?.contains("light_yellow") == true -> "yellow" // almost full
-                statusImgSrc?.contains("light_dual") == true -> "dual"     // waiting list
-                statusImgSrc?.contains("light_red") == true -> "red"       // registrations closed
-                else -> null
-            }
+        doc.select("a[href]").forEach { anchor ->
+            if (!isEventLink(anchor.attr("href"))) return@forEach
 
+            val detailUrl = anchor.absUrl("href").ifBlank { return@forEach }
+            val title = anchor.text().trim()
+            if (title.isBlank()) return@forEach
+
+            val container = findEventContainer(anchor)
+            val context = buildFlexibleContext(anchor, container)
+            val dates = extractDates(context)
+            val start = dates.firstOrNull() ?: return@forEach
+            val end = dates.getOrNull(1)
+
+            if (end?.isBefore(today) == true) return@forEach
+            if (end == null && start.isBefore(today)) return@forEach
+
+            val sourceElement = container ?: anchor
+            val branch = detectBranch(sourceElement)
             val event = BcEvent(
-                id = id,
-                type = effectiveType,
+                id = extractEventId(detailUrl),
+                type = deriveType(branch),
                 title = title,
-                region = region,
+                region = normalizeRegion(BuonaCacciaRegions.firstCanonicalNameIn(context)),
                 startDate = start,
                 endDate = end,
-                fee = fee,
-                location = location,
-                enrolled = enrolled,
-                status = status,
-                statusColor = statusColor,
+                fee = null,
+                location = null,
+                enrolled = null,
+                status = detectStatusText(context),
                 detailUrl = detailUrl,
+                statusColor = detectStatusColor(sourceElement, context),
                 branch = branch
             )
-            Timber.v("Parsed event: %s", event)
-            event
+
+            events.putIfAbsent(eventKeyOf(event), event)
         }
+
+        if (events.isNotEmpty()) {
+            Timber.d("Flexible parser recovered %d event candidates.", events.size)
+        }
+
+        return events.values.toList()
     }
+
+    private fun buildFlexibleContext(anchor: Element, container: Element?): String =
+        listOfNotNull(
+            container?.text()?.trim()?.takeIf { it.isNotEmpty() },
+            anchor.parent()?.text()?.trim()?.takeIf { it.isNotEmpty() },
+            anchor.text().trim().takeIf { it.isNotEmpty() }
+        ).distinct().joinToString(" | ")
+
+    private fun extractDates(text: String): List<LocalDate> =
+        inlineDatePattern.findAll(text)
+            .mapNotNull { match -> parseDate(match.value) }
+            .distinct()
+            .toList()
+
+    private fun findEventContainer(anchor: Element): Element? {
+        val ancestors = generateSequence(anchor.parent()) { it.parent() }
+            .take(8)
+            .toList()
+
+        return ancestors.firstOrNull { candidate ->
+            eventLinkCount(candidate) == 1 && extractDates(candidate.text()).isNotEmpty()
+        } ?: ancestors.firstOrNull { candidate ->
+            val linkCount = eventLinkCount(candidate)
+            val textLength = candidate.text().trim().length
+            linkCount in 1..3 && textLength in 20..700
+        } ?: anchor.parent()
+    }
+
+    private fun eventLinkCount(element: Element): Int =
+        element.select("a[href]").count { anchor -> isEventLink(anchor.attr("href")) }
 
     private fun parseDate(raw: String?): LocalDate? {
         val s = raw?.trim()?.takeIf { it.isNotEmpty() } ?: return null
         for (fmt in dateFormats) {
-            runCatching { return LocalDate.parse(s, fmt) }.onFailure { /* try next */ }
+            runCatching { return LocalDate.parse(s, fmt) }
         }
         return null
     }
@@ -147,56 +220,51 @@ object HtmlParser {
     private fun isEventLink(href: String): Boolean {
         val h = href.lowercase(Locale.ROOT)
         if ("event.aspx" in h) return true
-        // rewrite style: /event?e=123
         if (h.contains("/event") && h.contains("e=")) return true
-        // path style (if it ever arrives): /event/12345
         if (Regex("/event/\\d+").containsMatchIn(h)) return true
         return false
     }
 
-    /** Find the table that contains the expected headers. */
     private fun findEventsTable(doc: Document): Element? {
-        // ✅ Stable hook (present in the current list)
         doc.selectFirst("table#MainContent_EventsGridView")?.let { return it }
 
-        // Fallback: any table with expected headers
         val tables = doc.select("table")
         return tables.firstOrNull { table ->
             val headers = table.select("th")
                 .map { it.text().trim().lowercase(Locale.ITALY) }
             listOf("titolo", "regione", "partenza", "rientro")
                 .all { h -> headers.any { it.contains(h) } }
-        } ?: doc.selectFirst("table")
+        }
     }
 
-    @RequiresApi(Build.VERSION_CODES.TIRAMISU)
     private fun extractEventId(url: String): String? {
         val q = url.substringAfter('?', "")
         if (q.isNotEmpty()) {
             val params = q.split('&').mapNotNull {
                 val parts = it.split('=', limit = 2)
-                if (parts.size == 2) parts[0].lowercase(Locale.ROOT) to URLDecoder.decode(parts[1], "UTF-8") else null
+                if (parts.size == 2) {
+                    parts[0].lowercase(Locale.ROOT) to URLDecoder.decode(parts[1], "UTF-8")
+                } else {
+                    null
+                }
             }.toMap()
             params["e"]?.let { return it }
         }
-        // fallback: search for e=123 throughout the entire string
+
         Regex("(?i)[?&]e=(\\d+)").find(url)?.groupValues?.getOrNull(1)?.let { return it }
-        // fallback path: /event/123
         Regex("(?i)/event/(\\d+)").find(url)?.groupValues?.getOrNull(1)?.let { return it }
         return null
     }
 
-    @RequiresApi(Build.VERSION_CODES.TIRAMISU)
     fun parseSubscriptions(html: String): SubsWindow {
         val doc = Jsoup.parse(html)
         fun grab(id: String): LocalDate? = parseDate(doc.selectFirst("#$id")?.text())
 
-        var open  = grab("MainContent_EventFormView_lbSubsFrom")
+        var open = grab("MainContent_EventFormView_lbSubsFrom")
         var close = grab("MainContent_EventFormView_lbSubsTo")
         var seats = doc.selectFirst("#MainContent_EventFormView_lbSeats")?.text()?.trim()
         var taken = doc.selectFirst("#MainContent_EventFormView_lbTaken")?.text()?.trim()
 
-        // ✅ Textual fallback (more resilient to ID/markup changes)
         val text = doc.text()
 
         if (open == null) {
@@ -223,10 +291,101 @@ object HtmlParser {
         return SubsWindow(opening = open, closing = close, seats = seats, taken = taken)
     }
 
+    private fun normalizeRegion(region: String?): String? =
+        BuonaCacciaRegions.canonicalNameOf(region) ?: region?.trim()?.ifBlank { null }
+
+    private fun deriveType(branch: Branch?): String? =
+        when (branch) {
+            Branch.RS -> "RS"
+            Branch.EG -> "EG"
+            Branch.LC -> "LC"
+            Branch.CAPI -> "CAPI"
+            null -> null
+        }
+
+    private fun detectBranch(element: Element): Branch? {
+        val imageSources = element.select("img[src]").map { it.attr("src").lowercase(Locale.ROOT) }
+        imageSources.firstOrNull { it.contains("branch_") }?.let { src ->
+            return when {
+                "branch_rs" in src -> Branch.RS
+                "branch_eg" in src -> Branch.EG
+                "branch_lc" in src -> Branch.LC
+                else -> Branch.CAPI
+            }
+        }
+
+        val text = element.text().lowercase(Locale.ROOT)
+        return when {
+            Regex("\\blc\\b").containsMatchIn(text) -> Branch.LC
+            Regex("\\beg\\b").containsMatchIn(text) -> Branch.EG
+            Regex("\\brs\\b").containsMatchIn(text) -> Branch.RS
+            Regex("\\bcapi\\b").containsMatchIn(text) -> Branch.CAPI
+            else -> null
+        }
+    }
+
+    private fun detectStatusColor(element: Element, fallbackText: String? = null): String? {
+        val statusImgSrc = element
+            .select("img[src]")
+            .map { it.attr("src").lowercase(Locale.ROOT) }
+            .firstOrNull { it.contains("light_") }
+
+        val fromImage = when {
+            statusImgSrc?.contains("light_green") == true -> "green"
+            statusImgSrc?.contains("light_yellow") == true -> "yellow"
+            statusImgSrc?.contains("light_dual") == true -> "dual"
+            statusImgSrc?.contains("light_red") == true -> "red"
+            else -> null
+        }
+        if (fromImage != null) return fromImage
+
+        val normalizedText = fallbackText?.lowercase(Locale.ROOT) ?: return null
+        return when {
+            "lista d'attesa" in normalizedText || "lista di attesa" in normalizedText -> "yellow"
+            "chius" in normalizedText -> "red"
+            "apert" in normalizedText -> "green"
+            else -> null
+        }
+    }
+
+    private fun detectStatusText(text: String): String? {
+        val normalizedText = text.lowercase(Locale.ROOT)
+        return when {
+            "lista d'attesa" in normalizedText || "lista di attesa" in normalizedText -> "Lista d'attesa"
+            "chius" in normalizedText -> "Chiuso"
+            "apert" in normalizedText -> "Aperto"
+            else -> null
+        }
+    }
+
+    private fun eventKeyOf(event: BcEvent): String =
+        event.id?.takeIf { it.isNotBlank() } ?: event.detailUrl
+
+    private fun mergeEvent(primary: BcEvent, fallback: BcEvent): BcEvent =
+        primary.copy(
+            type = primary.type ?: fallback.type,
+            region = primary.region ?: fallback.region,
+            startDate = primary.startDate ?: fallback.startDate,
+            endDate = primary.endDate ?: fallback.endDate,
+            fee = primary.fee ?: fallback.fee,
+            location = primary.location ?: fallback.location,
+            enrolled = primary.enrolled ?: fallback.enrolled,
+            status = primary.status ?: fallback.status,
+            statusColor = primary.statusColor ?: fallback.statusColor,
+            branch = primary.branch ?: fallback.branch
+        )
+
     data class SubsWindow(
         val opening: LocalDate?,
         val closing: LocalDate?,
         val seats: String? = null,
         val taken: String? = null
+    )
+
+    data class EventsPageInspection(
+        val recognizableTable: Boolean,
+        val uniqueEventLinkCount: Int,
+        val candidateRowCount: Int,
+        val hasWebFormsMarkers: Boolean
     )
 }

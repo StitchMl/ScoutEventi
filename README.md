@@ -17,13 +17,13 @@
 ### 🔔 Sistema di notifiche
 Le notifiche vengono generate automaticamente dai **Worker** in background:
 
-| Tipo | Condizione | Descrizione |
-|------|-------------|-------------|
-| 🆕 **Nuovo evento** | appena scoperto un evento non ancora visto | Notifica istantanea |
-| 📅 **Apertura iscrizioni** | 7 giorni prima | “Tra una settimana aprono le iscrizioni” |
-| 📅 **Apertura iscrizioni** | 1 giorno prima | “Domani aprono le iscrizioni” |
-| 📅 **Apertura iscrizioni** | giorno stesso, prima delle 9:00 | “Iscrizioni aperte!” |
-| ⏳ **Chiusura iscrizioni** | 1 giorno prima | “Ultimi giorni per iscriversi!” |
+| Tipo                       | Condizione                                 | Descrizione                              |
+|----------------------------|--------------------------------------------|------------------------------------------|
+| 🆕 **Nuovo evento**        | appena scoperto un evento non ancora visto | Notifica istantanea                      |
+| 📅 **Apertura iscrizioni** | 7 giorni prima                             | “Tra una settimana aprono le iscrizioni” |
+| 📅 **Apertura iscrizioni** | 1 giorno prima                             | “Domani aprono le iscrizioni”            |
+| 📅 **Apertura iscrizioni** | giorno stesso, prima delle 9:00            | “Iscrizioni aperte!”                     |
+| ⏳ **Chiusura iscrizioni**  | 1 giorno prima                             | “Ultimi giorni per iscriversi!”          |
 
 Le notifiche includono un **richiamo grafico all’icona principale dell’app** (badge del logo sull’orologio blu).
 
@@ -32,16 +32,16 @@ Le notifiche includono un **richiamo grafico all’icona principale dell’app**
 ## 🧠 Architettura
 
 ### 🧩 Componenti principali
-| Componente | Ruolo |
-|-------------|--------|
-| `EventsRepository` | Effettua le chiamate HTTP e il parsing HTML. |
-| `EventStore` | Gestisce la cache persistente (DataStore Preferences). |
-| `NewEventsWorker` | Scopre nuovi eventi e genera notifiche istantanee. |
-| `SubscriptionsWorker` | Pianifica e invia i promemoria (apertura/chiusura). |
-| `Notifier` | Crea le notifiche con icone personalizzate e deep link. |
-| `HtmlParser` | Estrae i campi principali e le date iscrizioni dal DOM. |
-| `EventsViewModel` | Espone gli eventi all’interfaccia Compose. |
-| `MainActivity` | UI Compose: ricerca, filtri, refresh e dialog di notifica. |
+| Componente            | Ruolo                                                      |
+|-----------------------|------------------------------------------------------------|
+| `EventsRepository`    | Effettua le chiamate HTTP e il parsing HTML.               |
+| `EventStore`          | Gestisce la cache persistente (DataStore Preferences).     |
+| `NewEventsWorker`     | Scopre nuovi eventi e genera notifiche istantanee.         |
+| `SubscriptionsWorker` | Pianifica e invia i promemoria (apertura/chiusura).        |
+| `Notifier`            | Crea le notifiche con icone personalizzate e deep link.    |
+| `HtmlParser`          | Estrae i campi principali e le date iscrizioni dal DOM.    |
+| `EventsViewModel`     | Espone gli eventi all’interfaccia Compose.                 |
+| `MainActivity`        | UI Compose: ricerca, filtri, refresh e dialog di notifica. |
 
 ### ⚙️ Stack tecnologico
 - **Kotlin** + **Jetpack Compose**
