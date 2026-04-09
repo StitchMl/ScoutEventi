@@ -51,7 +51,7 @@ class EventsViewModel(
 
     fun refresh() {
         loadJob?.cancel()
-        val fallbackItems = if (cachedSnapshot.isNotEmpty()) cachedSnapshot else state.items
+        val fallbackItems = cachedSnapshot.ifEmpty { state.items }
         val scopeFilter = currentServerFilter()
         val minimumExpectedCount = minimumExpectedCountForFullRefresh(scopeFilter)
         val generation = ++loadGeneration
@@ -78,7 +78,7 @@ class EventsViewModel(
                     state = state.copy(loading = false)
                 }
             } catch (e: Exception) {
-                val fallback = if (cachedSnapshot.isNotEmpty()) cachedSnapshot else state.items
+                val fallback = cachedSnapshot.ifEmpty { state.items }
                 if (generation == loadGeneration) {
                     state = state.copy(
                         loading = false,
