@@ -80,7 +80,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          mkdir -p build/ios-derived-data
+          mkdir -p build/ios-derived-data build
           xcodebuild \
             -project iosApp/iosApp.xcodeproj \
             -scheme iosApp \
@@ -91,26 +91,36 @@ jobs:
             CODE_SIGNING_ALLOWED=NO \
             CODE_SIGNING_REQUIRED=NO \
             CODE_SIGN_IDENTITY="" \
-            build
+            DEVELOPMENT_TEAM="" \
+            build | tee build/xcodebuild.log
 
       - name: Install and launch app in smoke mode
         shell: bash
         run: |
           set -euo pipefail
-          APP_PATH="build/ios-derived-data/Build/Products/Debug-iphonesimulator/ScoutEventi.app"
+          APP_PATH="$(find build/ios-derived-data/Build/Products -maxdepth 2 -type d -name '*.app' | head -n 1)"
           BUNDLE_ID="it.buonacaccia.scouteventi.ios"
 
+          test -n "$APP_PATH"
           test -d "$APP_PATH"
+          echo "Using app bundle at $APP_PATH"
 
           xcrun simctl install "${{ steps.simulator.outputs.udid }}" "$APP_PATH"
           xcrun simctl terminate "${{ steps.simulator.outputs.udid }}" "$BUNDLE_ID" || true
           xcrun simctl launch "${{ steps.simulator.outputs.udid }}" "$BUNDLE_ID" --scouteventi-smoke-data
           sleep 10
+          xcrun simctl spawn "${{ steps.simulator.outputs.udid }}" log show --style compact --last 5m --predicate 'eventMessage CONTAINS "SCOUTEVENTI_SMOKE_READY"' | tee build/ios-smoke-log.txt
+          grep -q "SCOUTEVENTI_SMOKE_READY" build/ios-smoke-log.txt
           xcrun simctl io "${{ steps.simulator.outputs.udid }}" screenshot build/ios-simulator-smoke.png
           xcrun simctl terminate "${{ steps.simulator.outputs.udid }}" "$BUNDLE_ID"
 
-      - name: Upload simulator screenshot
+      - name: Upload simulator artifacts
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: ios-simulator-smoke
-          path: build/ios-simulator-smoke.png
+          if-no-files-found: ignore
+          path: |
+            build/ios-simulator-smoke.png
+            build/xcodebuild.log
+            build/ios-smoke-log.txt

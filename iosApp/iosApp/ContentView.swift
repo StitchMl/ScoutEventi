@@ -245,8 +245,8 @@ private actor BuonaCacciaService {
         let afterLocation = min(range.location + range.length, nsHtml.length)
         let after = nsHtml.substring(from: afterLocation)
 
-        let rowStart = before.range(of: "<tr", options: [.caseInsensitive, .backwards])
-        let rowEnd = after.range(of: "</tr>", options: .caseInsensitive)
+        let rowStart = (before as NSString).range(of: "<tr", options: [.caseInsensitive, .backwards])
+        let rowEnd = (after as NSString).range(of: "</tr>", options: .caseInsensitive)
         if rowStart.location != NSNotFound, rowEnd.location != NSNotFound {
             let start = rowStart.location
             let end = afterLocation + rowEnd.location + rowEnd.length
