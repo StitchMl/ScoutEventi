@@ -485,6 +485,8 @@ private struct EventRow: View {
             }
         }
         .padding(.vertical, 4)
+        .accessibilityElement(children: .combine)
+        .accessibilityIdentifier("event-row-\(event.id)")
     }
 }
 
@@ -529,12 +531,14 @@ struct ContentView: View {
                                 Link(destination: url) {
                                     EventRow(event: event)
                                 }
+                                .accessibilityIdentifier("event-link-\(event.id)")
                             } else {
                                 EventRow(event: event)
                             }
                         }
                     }
                     .listStyle(.insetGrouped)
+                    .accessibilityIdentifier("events-list")
                     .overlay {
                         if viewModel.filteredEvents.isEmpty && !viewModel.isLoading {
                             EmptyStateView()
@@ -543,15 +547,19 @@ struct ContentView: View {
                 }
             }
             .navigationTitle("ScoutEventi")
+            .accessibilityIdentifier("events-screen")
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
-                    Menu(viewModel.selectedRegion) {
+                    Menu {
                         ForEach(viewModel.availableRegions, id: \.self) { region in
                             Button(region) {
                                 viewModel.selectedRegion = region
                             }
                         }
+                    } label: {
+                        Label(viewModel.selectedRegion, systemImage: "line.3.horizontal.decrease.circle")
                     }
+                    .accessibilityIdentifier("region-filter-menu")
                 }
                 ToolbarItem(placement: .topBarTrailing) {
                     Button {
@@ -564,9 +572,14 @@ struct ContentView: View {
                         }
                     }
                     .disabled(viewModel.isLoading)
+                    .accessibilityIdentifier("refresh-button")
                 }
             }
-            .searchable(text: $viewModel.query, prompt: "Cerca eventi, regioni, stato")
+            .searchable(
+                text: $viewModel.query,
+                placement: .navigationBarDrawer(displayMode: .always),
+                prompt: "Cerca eventi, regioni, stato"
+            )
             .refreshable {
                 await viewModel.refresh()
             }
