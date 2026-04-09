@@ -55,6 +55,8 @@ kotlin {
 }
 
 dependencies {
+    implementation(project(":shared"))
+
     implementation(libs.androidx.palette.ktx)
     implementation(libs.androidx.compose.ui.graphics)
     // Compose BOM

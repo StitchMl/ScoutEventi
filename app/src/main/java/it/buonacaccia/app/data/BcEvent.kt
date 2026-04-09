@@ -2,8 +2,6 @@ package it.buonacaccia.app.data
 
 import java.time.LocalDate
 
-enum class Branch { LC, EG, RS, CAPI }
-
 data class BcEvent(
     val id: String?,
     val type: String?,

@@ -55,4 +55,7 @@ androidx-compose-ui-graphics = { group = "androidx.compose.ui", name = "ui-graph
 [plugins]
 ksp = { id = "com.google.devtools.ksp", version.ref = "ksp" }
 androidApplication = { id = "com.android.application", version.ref = "androidApplication" }
+androidLibrary = { id = "com.android.library", version.ref = "androidApplication" }
+androidKotlinMultiplatformLibrary = { id = "com.android.kotlin.multiplatform.library", version.ref = "androidApplication" }
 compose = { id = "org.jetbrains.kotlin.plugin.compose", version.ref = "composePlugin" }
+kotlinMultiplatform = { id = "org.jetbrains.kotlin.multiplatform", version.ref = "composePlugin" }
