@@ -36,6 +36,7 @@
 
         <receiver
             android:name=".widget.UpcomingOpeningsWidgetReceiver"
+            android:label="@string/widget_upcoming_name"
             android:exported="true">
             <intent-filter>
                 <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
@@ -43,6 +44,18 @@
             <meta-data
                 android:name="android.appwidget.provider"
                 android:resource="@xml/upcoming_openings_widget_info" />
+        </receiver>
+
+        <receiver
+            android:name=".widget.EventsByDateWidgetReceiver"
+            android:label="@string/widget_events_by_date_name"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/events_by_date_widget_info" />
         </receiver>
 
     </application>

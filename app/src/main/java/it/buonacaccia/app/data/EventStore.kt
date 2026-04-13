@@ -1,12 +1,15 @@
 package it.buonacaccia.app.data
 
 import android.content.Context
+import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.core.stringSetPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import androidx.glance.appwidget.updateAll
+import it.buonacaccia.app.widget.EventsByDateWidget
+import it.buonacaccia.app.widget.EventsWidgetKind
 import it.buonacaccia.app.widget.UpcomingOpeningsWidget
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
@@ -20,7 +23,8 @@ private val Context.dataStore by preferencesDataStore("bc_prefs")
 
 object EventStore {
     private val KEY_SUBSCRIBED_IDS = stringSetPreferencesKey("subscribed_ids")
-    private val KEY_WIDGET_ONLY_FOLLOWED = booleanPreferencesKey("widget_only_followed")
+    private val KEY_WIDGET_ONLY_FOLLOWED_UPCOMING = booleanPreferencesKey("widget_only_followed_upcoming")
+    private val KEY_WIDGET_ONLY_FOLLOWED_BY_DATE = booleanPreferencesKey("widget_only_followed_by_date")
     private val KEY_THEME_MODE = stringPreferencesKey("theme_mode")
     private val KEY_SEEN_IDS = stringSetPreferencesKey("seen_ids")
     private val KEY_NOTIFY_TYPES = stringSetPreferencesKey("notify_types")
@@ -29,13 +33,13 @@ object EventStore {
     private val KEY_SENT_REMINDERS = stringSetPreferencesKey("sent_reminders")
     private val KEY_CACHED_EVENTS = stringSetPreferencesKey("cached_events")
 
-    fun widgetOnlyFollowedFlow(ctx: Context): Flow<Boolean> =
-        ctx.dataStore.data.map { it[KEY_WIDGET_ONLY_FOLLOWED] ?: false }
+    internal fun widgetOnlyFollowedFlow(ctx: Context, kind: EventsWidgetKind): Flow<Boolean> =
+        ctx.dataStore.data.map { it[widgetOnlyFollowedKey(kind)] ?: false }
 
-    suspend fun setWidgetOnlyFollowed(ctx: Context, enabled: Boolean) {
-        ctx.dataStore.edit { it[KEY_WIDGET_ONLY_FOLLOWED] = enabled }
+    internal suspend fun setWidgetOnlyFollowed(ctx: Context, kind: EventsWidgetKind, enabled: Boolean) {
+        ctx.dataStore.edit { it[widgetOnlyFollowedKey(kind)] = enabled }
         updateWidgetsSafely(ctx)
-        Timber.d("EventStore.setWidgetOnlyFollowed enabled=%s", enabled)
+        Timber.d("EventStore.setWidgetOnlyFollowed kind=%s enabled=%s", kind, enabled)
     }
 
     enum class ThemeMode { SYSTEM, LIGHT, DARK }
@@ -62,8 +66,7 @@ object EventStore {
         }
 
     private fun isActive(e: BcEvent, today: LocalDate = LocalDate.now()): Boolean {
-        val end = e.endDate
-        return end == null || !end.isBefore(today)
+        return e.isStillRelevant(today)
     }
 
     @Suppress("unused")
@@ -105,13 +108,7 @@ object EventStore {
 
         ctx.dataStore.edit { pref ->
             val cur = (pref[KEY_CACHED_EVENTS] ?: emptySet()).mapNotNull { decodeEvent(it) }
-            val (toKeep, toDrop) = cur.partition { e ->
-                val close = e.subsCloseDate
-                val end = e.endDate
-                val subsOk = close == null || !close.isBefore(today)
-                val endOk = end == null || !end.isBefore(today)
-                subsOk && endOk
-            }
+            val (toKeep, toDrop) = cur.partition { e -> isActive(e, today) }
 
             removed = toDrop.map(::eventKeyOf).toSet()
             pref[KEY_CACHED_EVENTS] = toKeep.map { encodeEvent(it) }.toSet()
@@ -237,5 +234,13 @@ object EventStore {
     private suspend fun updateWidgetsSafely(ctx: Context) {
         runCatching { UpcomingOpeningsWidget().updateAll(ctx) }
             .onFailure { Timber.w(it, "Unable to refresh widgets after EventStore update") }
+        runCatching { EventsByDateWidget().updateAll(ctx) }
+            .onFailure { Timber.w(it, "Unable to refresh events-by-date widget after EventStore update") }
     }
+
+    private fun widgetOnlyFollowedKey(kind: EventsWidgetKind): Preferences.Key<Boolean> =
+        when (kind) {
+            EventsWidgetKind.UPCOMING_OPENINGS -> KEY_WIDGET_ONLY_FOLLOWED_UPCOMING
+            EventsWidgetKind.EVENTS_BY_DATE -> KEY_WIDGET_ONLY_FOLLOWED_BY_DATE
+        }
 }

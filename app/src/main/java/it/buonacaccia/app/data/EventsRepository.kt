@@ -9,6 +9,7 @@ import okhttp3.Request
 import timber.log.Timber
 import java.io.IOException
 import java.security.MessageDigest
+import java.time.LocalDate
 
 class EventsRepository(
     private val client: OkHttpClient
@@ -131,6 +132,7 @@ class EventsRepository(
         }
 
         return@withContext merged.values
+            .filter { it.isStillRelevant() }
             .sortedWith(compareBy<BcEvent> { it.startDate }.thenBy { it.title.lowercase() })
     }
 
@@ -140,6 +142,7 @@ class EventsRepository(
         queryParams: Map<String, String>,
         enrichPredicate: (BcEvent) -> Boolean,
     ): List<BcEvent> {
+        val today = LocalDate.now()
         val url = buildUrl(base, all, queryParams)
         Timber.d("EventsRepository.fetch url=%s", url)
 
@@ -220,7 +223,7 @@ class EventsRepository(
                     Timber.w(e, "Unable to enrich event id=%s url=%s", ev.id, ev.detailUrl)
                     ev
                 }
-            }
+            }.filter { it.isStillRelevant(today) }
         }
     }
 

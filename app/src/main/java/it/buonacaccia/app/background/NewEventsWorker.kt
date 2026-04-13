@@ -11,12 +11,14 @@ import it.buonacaccia.app.data.BuonaCacciaRegions
 import it.buonacaccia.app.data.EventStore
 import it.buonacaccia.app.data.EventsRepository
 import it.buonacaccia.app.data.FetchSafety
+import it.buonacaccia.app.data.shouldEnrichRegistrationWindow
 import it.buonacaccia.app.notify.Notifier
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.first
 import org.koin.core.component.KoinComponent
 import org.koin.core.component.inject
 import timber.log.Timber
+import java.time.LocalDate
 
 class NewEventsWorker(
     appContext: Context,
@@ -28,6 +30,7 @@ class NewEventsWorker(
 
     override suspend fun doWork(): Result = try {
         Timber.d("NewEventsWorker.start")
+        val today = LocalDate.now()
         val cachedSnapshot = EventStore.cachedEventsFlow(applicationContext).first()
         val seenKeysBefore = EventStore.seenIdsFlow(applicationContext).first()
         val minimumExpectedCount = FetchSafety.minimumExpectedCountForFullDataset(cachedSnapshot.size)
@@ -48,26 +51,29 @@ class NewEventsWorker(
 
         val events = if (canUseRegionFilters) {
             try {
-                repo.fetchByFilters(filters, enrichPredicate = { false })
+                repo.fetchByFilters(
+                    filters,
+                    enrichPredicate = { ev -> ev.shouldEnrichRegistrationWindow(today) }
+                )
             } catch (ce: CancellationException) {
                 throw ce
             } catch (error: Throwable) {
                 Timber.w(error, "Filtered new-events fetch failed, retrying with full fetch")
                 repo.fetch(
                     minimumExpectedCount = minimumExpectedCount,
-                    enrichPredicate = { false }
+                    enrichPredicate = { ev -> ev.shouldEnrichRegistrationWindow(today) }
                 )
             }
         } else {
             repo.fetch(
                 minimumExpectedCount = minimumExpectedCount,
-                enrichPredicate = { false }
+                enrichPredicate = { ev -> ev.shouldEnrichRegistrationWindow(today) }
             )
         }
         Timber.d("downloaded events=%d filters=%d", events.size, filters.size)
 
         EventStore.upsertEvents(applicationContext, events)
-        val removed = EventStore.purgeClosed(applicationContext, java.time.LocalDate.now())
+        val removed = EventStore.purgeClosed(applicationContext, today)
         if (removed.isNotEmpty()) Timber.d("purged closed events: %s", removed)
 
         val cached = EventStore.cachedEventsFlow(applicationContext).first()

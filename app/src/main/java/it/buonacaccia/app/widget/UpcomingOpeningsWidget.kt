@@ -17,6 +17,7 @@ import androidx.glance.Image
 import androidx.glance.ImageProvider
 import androidx.glance.action.Action
 import androidx.glance.action.ActionParameters
+import androidx.glance.action.actionParametersOf
 import androidx.glance.action.clickable
 import androidx.glance.appwidget.GlanceAppWidget
 import androidx.glance.appwidget.GlanceAppWidgetReceiver
@@ -64,6 +65,7 @@ import java.util.Locale
 import kotlin.math.abs
 
 private val KEY_ONLY_FOLLOWED = booleanPreferencesKey("widget_only_followed")
+private val KEY_WIDGET_KIND = ActionParameters.Key<String>("widget_kind")
 private const val WIDGET_REFRESH_WORK_NAME = "WidgetRefreshWork"
 
 data class WidgetPalette(
@@ -76,7 +78,9 @@ data class WidgetPalette(
     val accent: ColorProvider
 )
 
-class UpcomingOpeningsWidget : GlanceAppWidget() {
+internal abstract class BaseEventsWidget(
+    private val kind: EventsWidgetKind
+) : GlanceAppWidget() {
 
     override val stateDefinition = PreferencesGlanceStateDefinition
 
@@ -110,40 +114,43 @@ class UpcomingOpeningsWidget : GlanceAppWidget() {
 
         val today = LocalDate.now()
         val subscribedKeys = EventStore.subscribedIdsFlow(context).first()
-        val persistedOnlyFollowed = EventStore.widgetOnlyFollowedFlow(context).first()
+        val persistedOnlyFollowed = EventStore.widgetOnlyFollowedFlow(context, kind).first()
         val cached = EventStore.cachedEventsFlow(context).first()
 
         provideContent {
             val prefs: Preferences = currentState()
             val onlyFollowedLocal = prefs[KEY_ONLY_FOLLOWED] ?: persistedOnlyFollowed
 
-            val upcoming = cached
-                .filter { e ->
-                    val open = e.subsOpenDate
-                    val end = e.endDate
-                    (open != null && !open.isBefore(today)) &&
-                        (end == null || !end.isBefore(today)) &&
-                        (!onlyFollowedLocal || (EventStore.eventKeyOf(e) in subscribedKeys))
-                }
-                .sortedBy { it.subsOpenDate }
-                .take(30)
+            val events = selectWidgetEvents(
+                kind = kind,
+                events = cached,
+                today = today,
+                onlyFollowed = onlyFollowedLocal,
+                subscribedKeys = subscribedKeys
+            )
 
             WidgetContent(
                 ctx = context,
                 palette = palette,
+                kind = kind,
                 onlyFollowed = onlyFollowedLocal,
-                upcoming = upcoming
+                events = events
             )
         }
     }
 }
 
+internal class UpcomingOpeningsWidget : BaseEventsWidget(EventsWidgetKind.UPCOMING_OPENINGS)
+
+internal class EventsByDateWidget : BaseEventsWidget(EventsWidgetKind.EVENTS_BY_DATE)
+
 @Composable
 private fun WidgetContent(
     ctx: Context,
     palette: WidgetPalette,
+    kind: EventsWidgetKind,
     onlyFollowed: Boolean,
-    upcoming: List<BcEvent>
+    events: List<BcEvent>
 ) {
     Box(
         modifier = GlanceModifier
@@ -152,11 +159,11 @@ private fun WidgetContent(
             .padding(12.dp)
     ) {
         Column(GlanceModifier.fillMaxWidth()) {
-            HeaderRow(palette = palette, onlyFollowed = onlyFollowed)
+            HeaderRow(palette = palette, kind = kind, onlyFollowed = onlyFollowed)
 
             Spacer(GlanceModifier.height(10.dp))
 
-            if (upcoming.isEmpty()) {
+            if (events.isEmpty()) {
                 Box(
                     modifier = GlanceModifier
                         .fillMaxWidth()
@@ -167,18 +174,18 @@ private fun WidgetContent(
                 ) {
                     Text(
                         text = if (onlyFollowed) {
-                            "Nessun evento seguito in apertura"
+                            kind.emptyFollowedState
                         } else {
-                            "Nessun evento imminente"
+                            kind.emptyState
                         },
                         style = TextStyle(color = palette.onCard2, fontSize = 13.sp)
                     )
                 }
             } else {
                 LazyColumn {
-                    items(upcoming) { ev ->
+                    items(events) { ev ->
                         val onClick = clickActionFor(ctx, ev)
-                        EventRow(e = ev, palette = palette, onClick = onClick)
+                        EventRow(e = ev, palette = palette, kind = kind, onClick = onClick)
                         Spacer(GlanceModifier.height(8.dp))
                         Box(
                             modifier = GlanceModifier
@@ -196,7 +203,11 @@ private fun WidgetContent(
 
 @SuppressLint("RestrictedApi")
 @Composable
-private fun HeaderRow(palette: WidgetPalette, onlyFollowed: Boolean) {
+private fun HeaderRow(
+    palette: WidgetPalette,
+    kind: EventsWidgetKind,
+    onlyFollowed: Boolean
+) {
     Row(
         modifier = GlanceModifier.fillMaxWidth(),
         verticalAlignment = Alignment.CenterVertically
@@ -209,7 +220,7 @@ private fun HeaderRow(palette: WidgetPalette, onlyFollowed: Boolean) {
         Spacer(GlanceModifier.width(8.dp))
 
         Text(
-            text = "Prossimi eventi",
+            text = kind.title,
             style = TextStyle(color = palette.onBg, fontSize = 16.sp, fontWeight = FontWeight.Bold),
             modifier = GlanceModifier.defaultWeight()
         )
@@ -222,7 +233,9 @@ private fun HeaderRow(palette: WidgetPalette, onlyFollowed: Boolean) {
         Image(
             provider = ImageProvider(R.drawable.ic_widget_refresh),
             contentDescription = "Aggiorna",
-            modifier = GlanceModifier.size(22.dp).clickable(actionRunCallback<RefreshAction>()),
+            modifier = GlanceModifier
+                .size(22.dp)
+                .clickable(actionRunCallback<RefreshAction>(widgetKindParameters(kind))),
             colorFilter = ColorFilter.tint(iconColor)
         )
         Spacer(GlanceModifier.width(10.dp))
@@ -238,7 +251,7 @@ private fun HeaderRow(palette: WidgetPalette, onlyFollowed: Boolean) {
                 .cornerRadius(8.dp)
                 .background(pillBg)
                 .padding(3.dp)
-                .clickable(actionRunCallback<ToggleFollowedAction>())
+                .clickable(actionRunCallback<ToggleFollowedAction>(widgetKindParameters(kind)))
         ) {
             Image(
                 provider = ImageProvider(R.drawable.ic_widget_bell),
@@ -263,9 +276,10 @@ private fun HeaderRow(palette: WidgetPalette, onlyFollowed: Boolean) {
 private fun EventRow(
     e: BcEvent,
     palette: WidgetPalette,
+    kind: EventsWidgetKind,
     onClick: Action
 ) {
-    val open = e.subsOpenDate ?: return
+    val badgeDate = badgeDateFor(kind, e)
 
     Row(
         modifier = GlanceModifier
@@ -275,8 +289,11 @@ private fun EventRow(
             .clickable(onClick = onClick)
             .padding(horizontal = 12.dp, vertical = 10.dp)
     ) {
-        val day = open.format(DateTimeFormatter.ofPattern("dd"))
-        val mon = open.format(DateTimeFormatter.ofPattern("LLL", Locale.ITALIAN)).uppercase(Locale.ITALIAN)
+        val day = badgeDate?.format(DateTimeFormatter.ofPattern("dd")) ?: "--"
+        val mon = badgeDate
+            ?.format(DateTimeFormatter.ofPattern("LLL", Locale.ITALIAN))
+            ?.uppercase(Locale.ITALIAN)
+            ?: "DATA"
 
         val lane = colorFromKey(EventStore.eventKeyOf(e))
         val laneProvider = ColorProvider(lane)
@@ -341,8 +358,13 @@ class UpcomingOpeningsWidgetReceiver : GlanceAppWidgetReceiver() {
     override val glanceAppWidget: GlanceAppWidget = UpcomingOpeningsWidget()
 }
 
+class EventsByDateWidgetReceiver : GlanceAppWidgetReceiver() {
+    override val glanceAppWidget: GlanceAppWidget = EventsByDateWidget()
+}
+
 class RefreshAction : ActionCallback {
     override suspend fun onAction(context: Context, glanceId: GlanceId, parameters: ActionParameters) {
+        val kind = widgetKindFrom(parameters)
         val req = OneTimeWorkRequestBuilder<WidgetRefreshWorker>()
             .setExpedited(OutOfQuotaPolicy.RUN_AS_NON_EXPEDITED_WORK_REQUEST)
             .build()
@@ -351,7 +373,7 @@ class RefreshAction : ActionCallback {
             ExistingWorkPolicy.REPLACE,
             req
         )
-        UpcomingOpeningsWidget().update(context, glanceId)
+        widgetFor(kind).update(context, glanceId)
     }
 }
 
@@ -361,6 +383,7 @@ class ToggleFollowedAction : ActionCallback {
         glanceId: GlanceId,
         parameters: ActionParameters
     ) {
+        val kind = widgetKindFrom(parameters)
         val curLocal = androidx.glance.appwidget.state.getAppWidgetState(
             context, PreferencesGlanceStateDefinition, glanceId
         )[KEY_ONLY_FOLLOWED] ?: false
@@ -374,10 +397,10 @@ class ToggleFollowedAction : ActionCallback {
         }
 
         withContext(Dispatchers.IO) {
-            EventStore.setWidgetOnlyFollowed(context, newVal)
+            EventStore.setWidgetOnlyFollowed(context, kind, newVal)
         }
 
-        UpcomingOpeningsWidget().update(context, glanceId)
+        widgetFor(kind).update(context, glanceId)
     }
 }
 
@@ -397,3 +420,17 @@ private fun clickActionFor(ctx: Context, e: BcEvent): Action {
         .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
     return actionStartActivity(intent)
 }
+
+private fun widgetKindParameters(kind: EventsWidgetKind): ActionParameters =
+    actionParametersOf(KEY_WIDGET_KIND to kind.name)
+
+private fun widgetKindFrom(parameters: ActionParameters): EventsWidgetKind =
+    parameters[KEY_WIDGET_KIND]
+        ?.let { raw -> EventsWidgetKind.entries.firstOrNull { it.name == raw } }
+        ?: EventsWidgetKind.UPCOMING_OPENINGS
+
+private fun widgetFor(kind: EventsWidgetKind): GlanceAppWidget =
+    when (kind) {
+        EventsWidgetKind.UPCOMING_OPENINGS -> UpcomingOpeningsWidget()
+        EventsWidgetKind.EVENTS_BY_DATE -> EventsByDateWidget()
+    }
