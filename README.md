@@ -84,6 +84,14 @@ Il sistema:
 
 ---
 
+## 🍎 Build iOS firmata
+
+Il repository include ora anche una pipeline per generare un `.ipa` iOS firmato tramite **GitHub Actions su macOS**, quindi non serve costruirlo localmente da Windows.
+
+Il flusso completo, con segreti GitHub richiesti e modalità `ad-hoc` / `app-store` / `development`, è documentato in [MULTIPLATFORM.md](MULTIPLATFORM.md).
+
+---
+
 ## 🕰️ Logica Worker
 
 I due worker principali operano in modo indipendente:
