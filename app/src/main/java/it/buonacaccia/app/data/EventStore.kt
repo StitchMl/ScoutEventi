@@ -29,6 +29,8 @@ object EventStore {
     private val KEY_SEEN_IDS = stringSetPreferencesKey("seen_ids")
     private val KEY_NOTIFY_TYPES = stringSetPreferencesKey("notify_types")
     private val KEY_NOTIFY_REGIONS = stringSetPreferencesKey("notify_regions")
+    private val KEY_NOTIFY_ZONES = stringSetPreferencesKey("notify_zones")
+    private val KEY_NOTIFY_TYPE_REGION_RULES = stringSetPreferencesKey("notify_type_region_rules")
     private val KEY_MUTE_TYPES = stringSetPreferencesKey("mute_types")
     private val KEY_SENT_REMINDERS = stringSetPreferencesKey("sent_reminders")
     private val KEY_CACHED_EVENTS = stringSetPreferencesKey("cached_events")
@@ -138,13 +140,14 @@ object EventStore {
             encDate(e.startDate), encDate(e.endDate),
             enc(e.fee), enc(e.location), enc(e.enrolled),
             enc(e.status), enc(e.detailUrl), enc(e.statusColor),
-            enc(e.branch?.name), encDate(e.subsOpenDate), encDate(e.subsCloseDate)
+            enc(e.branch?.name), encDate(e.subsOpenDate), encDate(e.subsCloseDate),
+            enc(e.zone)
         ).joinToString("|")
     }
 
     private fun decodeEvent(s: String): BcEvent? = runCatching {
         val p = s.split("|")
-        val v = if (p.size < 15) p + List(15 - p.size) { "" } else p
+        val v = if (p.size < 16) p + List(16 - p.size) { "" } else p
         BcEvent(
             id = dec(v[0]),
             type = dec(v[1]),
@@ -160,7 +163,8 @@ object EventStore {
             statusColor = dec(v[11]),
             branch = dec(v[12])?.let { runCatching { Branch.valueOf(it) }.getOrNull() },
             subsOpenDate = decDate(v[13]),
-            subsCloseDate = decDate(v[14])
+            subsCloseDate = decDate(v[14]),
+            zone = dec(v[15])
         )
     }.getOrNull()
 
@@ -191,6 +195,30 @@ object EventStore {
     suspend fun setNotifyRegions(ctx: Context, regions: Set<String>) {
         ctx.dataStore.edit { it[KEY_NOTIFY_REGIONS] = regions }
         Timber.d("EventStore.setNotifyRegions %s", regions)
+    }
+
+    fun notifyZonesFlow(ctx: Context): Flow<Set<String>> =
+        ctx.dataStore.data.map { it[KEY_NOTIFY_ZONES] ?: emptySet() }
+
+    suspend fun setNotifyZones(ctx: Context, zones: Set<String>) {
+        ctx.dataStore.edit { it[KEY_NOTIFY_ZONES] = zones }
+        Timber.d("EventStore.setNotifyZones %s", zones)
+    }
+
+    fun notifyTypeRegionRulesFlow(ctx: Context): Flow<List<NotificationTypeRegionRule>> =
+        ctx.dataStore.data.map { pref ->
+            decodeNotifyTypeRegionRules(pref[KEY_NOTIFY_TYPE_REGION_RULES] ?: emptySet())
+        }
+
+    @Suppress("unused")
+    suspend fun setNotifyTypeRegionRules(ctx: Context, rules: Collection<NotificationTypeRegionRule>) {
+        val normalizedRules = rules
+            .mapNotNull(::normalizeNotifyTypeRegionRule)
+            .sortedBy { it.type.lowercase() }
+        ctx.dataStore.edit { pref ->
+            pref[KEY_NOTIFY_TYPE_REGION_RULES] = normalizedRules.map(::encodeNotifyTypeRegionRule).toSet()
+        }
+        Timber.d("EventStore.setNotifyTypeRegionRules count=%d", normalizedRules.size)
     }
 
     fun seenIdsFlow(ctx: Context): Flow<Set<String>> =
@@ -236,6 +264,43 @@ object EventStore {
             .onFailure { Timber.w(it, "Unable to refresh widgets after EventStore update") }
         runCatching { EventsByDateWidget().updateAll(ctx) }
             .onFailure { Timber.w(it, "Unable to refresh events-by-date widget after EventStore update") }
+    }
+
+    private fun encodeNotifyTypeRegionRule(rule: NotificationTypeRegionRule): String {
+        val encodedType = enc(rule.type)
+        val encodedRegions = rule.regions
+            .map(::enc)
+            .sorted()
+            .joinToString(",")
+        return "$encodedType|$encodedRegions"
+    }
+
+    private fun decodeNotifyTypeRegionRules(rawRules: Set<String>): List<NotificationTypeRegionRule> =
+        rawRules.mapNotNull(::decodeNotifyTypeRegionRule)
+            .mapNotNull(::normalizeNotifyTypeRegionRule)
+            .sortedBy { it.type.lowercase() }
+
+    private fun decodeNotifyTypeRegionRule(raw: String): NotificationTypeRegionRule? {
+        val sep = raw.indexOf('|')
+        if (sep < 0) return null
+        val type = dec(raw.substring(0, sep))?.trim().orEmpty()
+        if (type.isEmpty()) return null
+        val regions = raw
+            .substring(sep + 1)
+            .split(',')
+            .mapNotNull { token ->
+                token.takeIf { it.isNotEmpty() }?.let(::dec)?.trim()?.takeIf { it.isNotEmpty() }
+            }
+            .toSet()
+        return NotificationTypeRegionRule(type = type, regions = regions)
+    }
+
+    private fun normalizeNotifyTypeRegionRule(rule: NotificationTypeRegionRule): NotificationTypeRegionRule? {
+        val type = rule.type.trim().takeIf { it.isNotEmpty() } ?: return null
+        val regions = rule.regions
+            .mapNotNull { it.trim().takeIf(String::isNotEmpty) }
+            .toCollection(linkedSetOf())
+        return NotificationTypeRegionRule(type = type, regions = regions)
     }
 
     private fun widgetOnlyFollowedKey(kind: EventsWidgetKind): Preferences.Key<Boolean> =

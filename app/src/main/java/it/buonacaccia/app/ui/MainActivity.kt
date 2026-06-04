@@ -27,6 +27,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -38,8 +39,6 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.AddAlert
-import androidx.compose.material.icons.filled.AddLocation
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Email
 import androidx.compose.material.icons.filled.EventAvailable
@@ -102,6 +101,7 @@ import androidx.core.net.toUri
 import it.buonacaccia.app.R
 import it.buonacaccia.app.data.BcEvent
 import it.buonacaccia.app.data.EventStore
+import it.buonacaccia.app.data.guessZone
 import it.buonacaccia.app.ui.components.EventCard
 import it.buonacaccia.app.ui.theme.BuonaCacciaTheme
 import kotlinx.coroutines.launch
@@ -231,6 +231,9 @@ private fun MainScreen(
     val interestedRegions by EventStore
         .notifyRegionsFlow(context)
         .collectAsState(initial = emptySet())
+    val interestedZones by EventStore
+        .notifyZonesFlow(context)
+        .collectAsState(initial = emptySet())
 
     val state = vm.state
     LaunchedEffect(cached) {
@@ -245,14 +248,18 @@ private fun MainScreen(
     val pullRefreshState = rememberPullToRefreshState()
 
     // Multi-selection dialog types
-    var showTypesDialog by remember { mutableStateOf(false) }
-    var showRegionsDialog by remember { mutableStateOf(false) }
+    var showNotificationSettings by remember { mutableStateOf(false) }
     var showInfo by remember { mutableStateOf(initialShowInfo) }
     var showBatteryHints by remember { mutableStateOf(initialShowBatteryHints) }
 
     // List of available types (derived from current events)
     val availableTypes = remember(state.items) {
         state.items.mapNotNull { it.type?.trim() }
+            .toSortedSet(String.CASE_INSENSITIVE_ORDER)
+            .toList()
+    }
+    val availableZones = remember(state.items) {
+        state.items.mapNotNull { it.guessZone() }
             .toSortedSet(String.CASE_INSENSITIVE_ORDER)
             .toList()
     }
@@ -276,12 +283,8 @@ private fun MainScreen(
                     ) {
                         Icon(Icons.Default.Refresh, contentDescription = "Refresh")
                     }
-                    IconButton(onClick = { if (!showTypesDialog) showTypesDialog = true }) {
-                        Icon(Icons.Default.AddAlert, contentDescription = "Filtri notifiche")
-                    }
-
-                    IconButton(onClick = { if (!showRegionsDialog) showRegionsDialog = true }) {
-                        Icon(Icons.Default.AddLocation, contentDescription = "Regioni notifiche")
+                    IconButton(onClick = { if (!showNotificationSettings) showNotificationSettings = true }) {
+                        Icon(Icons.Default.Notifications, contentDescription = "Impostazioni notifiche")
                     }
 
                     IconButton(onClick = { if (!showInfo) showInfo = true }) {
@@ -318,12 +321,15 @@ private fun MainScreen(
                 regions = vm.regions,
                 selectedRegion = state.region ?: "Tutte",
                 onRegionChange = { vm.onRegionChange(if (it == "Tutte") null else it) },
+                zones = vm.zones,
+                selectedZone = state.zone ?: "Tutte",
+                onZoneChange = { vm.onZoneChange(if (it == "Tutte") null else it) },
                 selectedUnit = state.unit,
                 onUnitChange = vm::onUnitChange,
-                onlyOpen = state.onlyOpen,                     // 🆕
+                onlyOpen = state.onlyOpen,
                 onOnlyOpenChange = vm::onOnlyOpenChange,
-                onlyFollowed = onlyFollowed,                         // 🆕
-                onOnlyFollowedChange = { onlyFollowed = it }         // 🆕
+                onlyFollowed = onlyFollowed,
+                onOnlyFollowedChange = { onlyFollowed = it }
             )
 
             state.error?.let { message ->
@@ -375,7 +381,7 @@ private fun MainScreen(
                         items(events, key = { ev -> EventStore.eventKeyOf(ev) }) { ev ->
                             EventCard(ev = ev)
                         }
-                        item { Spacer(Modifier.height(24.dp)) }
+                        item { Spacer(Modifier.height(56.dp)) }
                     }
                 }
             }
@@ -392,51 +398,66 @@ private fun MainScreen(
         return
     }
 
-    if (showTypesDialog) {
-        // Initial mode: if there is an active denylist, start from DENYLIST; otherwise ALLOWLIST
+    if (showNotificationSettings) {
         var mode by remember(interestedTypes, mutedTypes) {
             mutableStateOf(if (mutedTypes.isNotEmpty()) NotifyMode.DENYLIST else NotifyMode.ALLOWLIST)
         }
 
-        // Initial selection consistent with the current mode
-        var localSelection by remember(interestedTypes, mutedTypes, availableTypes) {
+        var localTypes by remember(interestedTypes, mutedTypes, availableTypes) {
             mutableStateOf(
                 (if (mode == NotifyMode.DENYLIST) mutedTypes else interestedTypes)
                     .intersect(availableTypes.toSet())
             )
         }
 
+        var localRegions by remember(interestedRegions) {
+            mutableStateOf(interestedRegions.intersect(vm.regions.toSet()))
+        }
+
+        var localZones by remember(interestedZones) {
+            mutableStateOf(interestedZones.intersect(availableZones.toSet()))
+        }
+
         AlertDialog(
-            onDismissRequest = { showTypesDialog = false },
+            onDismissRequest = { showNotificationSettings = false },
             confirmButton = {
                 TextButton(onClick = {
                     scope.launch {
                         when (mode) {
                             NotifyMode.ALLOWLIST -> {
-                                EventStore.setNotifyTypes(context, localSelection)
-                                EventStore.setMuteTypes(context, emptySet())    // empty the other set
+                                EventStore.setNotifyTypes(context, localTypes)
+                                EventStore.setMuteTypes(context, emptySet())
                             }
                             NotifyMode.DENYLIST -> {
-                                EventStore.setMuteTypes(context, localSelection)
-                                EventStore.setNotifyTypes(context, emptySet())   // empty the other set
+                                EventStore.setMuteTypes(context, localTypes)
+                                EventStore.setNotifyTypes(context, emptySet())
                             }
                         }
+                        EventStore.setNotifyRegions(context, localRegions)
+                        EventStore.setNotifyZones(context, localZones)
                     }
-                    showTypesDialog = false
+                    showNotificationSettings = false
                 }) { Text("Salva") }
             },
-            dismissButton = { TextButton(onClick = { showTypesDialog = false }) { Text("Annulla") } },
-            title = { Text("Filtri notifiche (tipi)") },
+            dismissButton = {
+                TextButton(onClick = { showNotificationSettings = false }) { Text("Annulla") }
+            },
+            title = { Text("Impostazioni notifiche") },
             text = {
-                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-
-                    // Toggle mode (exclusive choice)
+                Column(
+                    modifier = Modifier
+                        .heightIn(max = 450.dp)
+                        .verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(16.dp)
+                ) {
+                    Text("Filtro per tipo di evento", style = MaterialTheme.typography.titleMedium)
+                    
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         FilterChip(
                             selected = mode == NotifyMode.ALLOWLIST,
                             onClick = {
                                 mode = NotifyMode.ALLOWLIST
-                                localSelection = interestedTypes.intersect(availableTypes.toSet())
+                                localTypes = interestedTypes.intersect(availableTypes.toSet())
                             },
                             label = { Text("Consenti solo") }
                         )
@@ -444,7 +465,7 @@ private fun MainScreen(
                             selected = mode == NotifyMode.DENYLIST,
                             onClick = {
                                 mode = NotifyMode.DENYLIST
-                                localSelection = mutedTypes.intersect(availableTypes.toSet())
+                                localTypes = mutedTypes.intersect(availableTypes.toSet())
                             },
                             label = { Text("Escludi") }
                         )
@@ -453,14 +474,13 @@ private fun MainScreen(
                     Text(
                         when (mode) {
                             NotifyMode.ALLOWLIST ->
-                                "Riceverai notifiche solo per i tipi selezionati. Se non selezioni nulla, riceverai notifiche per tutti i tipi (inclusi nuovi)."
+                                "Riceverai notifiche solo per i tipi selezionati. Se non selezioni nulla, le riceverai per tutti."
                             NotifyMode.DENYLIST  ->
-                                "Riceverai notifiche per tutti i tipi tranne quelli selezionati. Se non selezioni nulla, riceverai notifiche per tutti i tipi."
+                                "Riceverai notifiche per tutti tranne quelli selezionati. Se non selezioni nulla, le riceverai per tutti."
                         },
                         style = MaterialTheme.typography.bodySmall
                     )
 
-                    // Chips types available
                     @OptIn(ExperimentalLayoutApi::class)
                     FlowRow(
                         modifier = Modifier.fillMaxWidth(),
@@ -468,62 +488,73 @@ private fun MainScreen(
                         verticalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
                         availableTypes.forEach { t ->
-                            val selected = t in localSelection
+                            val selected = t in localTypes
                             FilterChip(
                                 selected = selected,
                                 onClick = {
-                                    localSelection = if (selected) localSelection - t else localSelection + t
+                                    localTypes = if (selected) localTypes - t else localTypes + t
                                 },
                                 label = { Text(t) }
                             )
                         }
                     }
 
-                    // Select/Deselect All
-                    val allSelected = localSelection.size == availableTypes.size && availableTypes.isNotEmpty()
+                    val allSelected = localTypes.size == availableTypes.size && availableTypes.isNotEmpty()
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
                         TextButton(onClick = {
-                            localSelection = if (allSelected) emptySet() else availableTypes.toSet()
+                            localTypes = if (allSelected) emptySet() else availableTypes.toSet()
                         }) {
                             Text(if (allSelected) "Deseleziona tutto" else "Seleziona tutto")
                         }
                     }
-                }
-            }
-        )
-    }
 
-    if (showRegionsDialog) {
-        var localSelection by remember(interestedRegions) {
-            mutableStateOf(interestedRegions.intersect(vm.regions.toSet()))
-        }
+                    HorizontalDivider()
 
-        AlertDialog(
-            onDismissRequest = { showRegionsDialog = false },
-            confirmButton = {
-                TextButton(onClick = {
-                    scope.launch { EventStore.setNotifyRegions(context, localSelection) }
-                    showRegionsDialog = false
-                }) { Text("Salva") }
-            },
-            dismissButton = {
-                TextButton(onClick = { showRegionsDialog = false }) { Text("Annulla") }
-            },
-            title = { Text("Regioni per le notifiche") },
-            text = {
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text("Se non selezioni nulla, riceverai notifiche per tutte le regioni.")
-                    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("Filtro per regione", style = MaterialTheme.typography.titleMedium)
+                    Text("Riceverai notifiche per le regioni selezionate (nessuna = tutte).", style = MaterialTheme.typography.bodySmall)
+
+                    @OptIn(ExperimentalLayoutApi::class)
+                    FlowRow(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
                         vm.regions.filter { it != "Tutte" }.forEach { r ->
-                            val selected = r in localSelection
+                            val selected = r in localRegions
                             FilterChip(
                                 selected = selected,
                                 onClick = {
-                                    localSelection =
-                                        if (selected) localSelection - r else localSelection + r
+                                    localRegions = if (selected) localRegions - r else localRegions + r
                                 },
                                 label = { Text(r) }
                             )
+                        }
+                    }
+
+                    HorizontalDivider()
+
+                    Text("Filtro per zona/provincia", style = MaterialTheme.typography.titleMedium)
+                    Text("Riceverai notifiche per le zone/sigle selezionate (nessuna = tutte).", style = MaterialTheme.typography.bodySmall)
+
+                    @OptIn(ExperimentalLayoutApi::class)
+                    FlowRow(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        if (availableZones.isEmpty()) {
+                            Text("Nessuna zona rilevata negli eventi attuali.", style = MaterialTheme.typography.labelMedium)
+                        } else {
+                            availableZones.forEach { z ->
+                                val selected = z in localZones
+                                FilterChip(
+                                    selected = selected,
+                                    onClick = {
+                                        localZones = if (selected) localZones - z else localZones + z
+                                    },
+                                    label = { Text(z) }
+                                )
+                            }
                         }
                     }
                 }
@@ -617,80 +648,128 @@ private fun FiltersRow(
     regions: List<String>,
     selectedRegion: String,
     onRegionChange: (String) -> Unit,
+    zones: List<String>,
+    selectedZone: String,
+    onZoneChange: (String) -> Unit,
     selectedUnit: UnitFilter,
     onUnitChange: (UnitFilter) -> Unit,
     onlyOpen: Boolean,
     onOnlyOpenChange: (Boolean) -> Unit,
-    onlyFollowed: Boolean,                              // 🆕
-    onOnlyFollowedChange: (Boolean) -> Unit             // 🆕
+    onlyFollowed: Boolean,
+    onOnlyFollowedChange: (Boolean) -> Unit
 ) {
-    Row(
-        Modifier
+    Column(
+        modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 12.dp, vertical = 4.dp),
-        horizontalArrangement = Arrangement.spacedBy(12.dp)
+            .padding(vertical = 4.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
-        // REGION (weight goes on the Box, not just the TextField)
-        var expandedR by remember { mutableStateOf(false) }
-        ExposedDropdownMenuBox(
-            expanded = expandedR,
-            onExpandedChange = { expandedR = it },
-            modifier = Modifier.weight(1f)
+        Row(
+            Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 12.dp),
+            horizontalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            OutlinedTextField(
-                modifier = Modifier.menuAnchor(ExposedDropdownMenuAnchorType.PrimaryNotEditable),
-                value = selectedRegion,
-                onValueChange = {},
-                readOnly = true,
-                label = { Text("Regione") },
-                trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expandedR) }
-            )
-            ExposedDropdownMenu(expanded = expandedR, onDismissRequest = { expandedR = false }) {
-                regions.forEach { r ->
-                    DropdownMenuItem(
-                        text = { Text(r) },
-                        onClick = { onRegionChange(r); expandedR = false }
-                    )
+            // REGION (weight goes on the Box, not just the TextField)
+            var expandedR by remember { mutableStateOf(false) }
+            ExposedDropdownMenuBox(
+                expanded = expandedR,
+                onExpandedChange = { expandedR = it },
+                modifier = Modifier.weight(1f)
+            ) {
+                OutlinedTextField(
+                    modifier = Modifier.menuAnchor(ExposedDropdownMenuAnchorType.PrimaryNotEditable).fillMaxWidth(),
+                    value = selectedRegion,
+                    onValueChange = {},
+                    readOnly = true,
+                    singleLine = true,
+                    label = { Text("Regione") },
+                    trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expandedR) }
+                )
+                ExposedDropdownMenu(expanded = expandedR, onDismissRequest = { expandedR = false }) {
+                    regions.forEach { r ->
+                        DropdownMenuItem(
+                            text = { Text(r) },
+                            onClick = { onRegionChange(r); expandedR = false }
+                        )
+                    }
+                }
+            }
+
+            // ZONE (same width as the others)
+            var expandedZ by remember { mutableStateOf(false) }
+            ExposedDropdownMenuBox(
+                expanded = expandedZ,
+                onExpandedChange = { expandedZ = it },
+                modifier = Modifier.weight(1f)
+            ) {
+                OutlinedTextField(
+                    modifier = Modifier.menuAnchor(ExposedDropdownMenuAnchorType.PrimaryNotEditable).fillMaxWidth(),
+                    value = selectedZone,
+                    onValueChange = {},
+                    readOnly = true,
+                    singleLine = true,
+                    label = { Text("Zona") },
+                    trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expandedZ) }
+                )
+                ExposedDropdownMenu(expanded = expandedZ, onDismissRequest = { expandedZ = false }) {
+                    zones.forEach { z ->
+                        DropdownMenuItem(
+                            text = { Text(z) },
+                            onClick = { onZoneChange(z); expandedZ = false }
+                        )
+                    }
                 }
             }
         }
 
-        // UNIT (same width as the first)
-        var expandedU by remember { mutableStateOf(false) }
-        val unitLabel = when (selectedUnit) {
-            UnitFilter.TUTTE -> "Tutte"
-            UnitFilter.BRANCO -> "Branco"
-            UnitFilter.REPARTO -> "Reparto"
-            UnitFilter.CLAN -> "Clan"
-            UnitFilter.CAPI -> "Capi"
-        }
-        ExposedDropdownMenuBox(
-            expanded = expandedU,
-            onExpandedChange = { expandedU = it },
-            modifier = Modifier.weight(1f)
+        Row(
+            Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 12.dp),
+            horizontalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            OutlinedTextField(
-                modifier = Modifier.menuAnchor(ExposedDropdownMenuAnchorType.PrimaryNotEditable),
-                value = unitLabel,
-                onValueChange = {},
-                readOnly = true,
-                label = { Text("Unità") },
-                trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expandedU) }
-            )
-            ExposedDropdownMenu(expanded = expandedU, onDismissRequest = { expandedU = false }) {
-                listOf(
-                    UnitFilter.TUTTE to "Tutte",
-                    UnitFilter.BRANCO to "Branco",
-                    UnitFilter.REPARTO to "Reparto",
-                    UnitFilter.CLAN to "Clan",
-                    UnitFilter.CAPI to "Capi"
-                ).forEach { (value, label) ->
-                    DropdownMenuItem(
-                        text = { Text(label) },
-                        onClick = { onUnitChange(value); expandedU = false }
-                    )
+            // UNIT (same width as the first)
+            var expandedU by remember { mutableStateOf(false) }
+            val unitLabel = when (selectedUnit) {
+                UnitFilter.TUTTE -> "Tutte"
+                UnitFilter.BRANCO -> "Branco"
+                UnitFilter.REPARTO -> "Reparto"
+                UnitFilter.CLAN -> "Clan"
+                UnitFilter.CAPI -> "Capi"
+            }
+            ExposedDropdownMenuBox(
+                expanded = expandedU,
+                onExpandedChange = { expandedU = it },
+                modifier = Modifier.weight(1f)
+            ) {
+                OutlinedTextField(
+                    modifier = Modifier.menuAnchor(ExposedDropdownMenuAnchorType.PrimaryNotEditable).fillMaxWidth(),
+                    value = unitLabel,
+                    onValueChange = {},
+                    readOnly = true,
+                    singleLine = true,
+                    label = { Text("Unità") },
+                    trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expandedU) }
+                )
+                ExposedDropdownMenu(expanded = expandedU, onDismissRequest = { expandedU = false }) {
+                    listOf(
+                        UnitFilter.TUTTE to "Tutte",
+                        UnitFilter.BRANCO to "Branco",
+                        UnitFilter.REPARTO to "Reparto",
+                        UnitFilter.CLAN to "Clan",
+                        UnitFilter.CAPI to "Capi"
+                    ).forEach { (value, label) ->
+                        DropdownMenuItem(
+                            text = { Text(label) },
+                            onClick = { onUnitChange(value); expandedU = false }
+                        )
+                    }
                 }
             }
+
+            // Empty spacer to balance the row layout
+            Spacer(modifier = Modifier.weight(1f))
         }
     }
     Row(
@@ -993,6 +1072,10 @@ private fun ThemeOptionRow(
     onChange: (EventStore.ThemeMode) -> Unit
 ) {
     Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable { onChange(value) }
+            .padding(vertical = 4.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(8.dp)
     ) {

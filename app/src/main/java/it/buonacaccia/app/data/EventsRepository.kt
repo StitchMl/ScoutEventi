@@ -2,6 +2,9 @@ package it.buonacaccia.app.data
 
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.withContext
 import okhttp3.HttpUrl.Companion.toHttpUrl
 import okhttp3.OkHttpClient
@@ -207,23 +210,29 @@ class EventsRepository(
                 )
             }
 
-            return baseEvents.map { ev ->
-                if (!enrichPredicate(ev)) return@map ev
+            val enriched = coroutineScope {
+                baseEvents.map { ev ->
+                    async {
+                        if (!enrichPredicate(ev)) return@async ev
 
-                try {
-                    val detailHtml = fetchDetail(ev.detailUrl)
-                    val subs = HtmlParser.parseSubscriptions(detailHtml)
-                    ev.copy(
-                        subsOpenDate = subs.opening,
-                        subsCloseDate = subs.closing
-                    )
-                } catch (ce: CancellationException) {
-                    throw ce
-                } catch (e: Exception) {
-                    Timber.w(e, "Unable to enrich event id=%s url=%s", ev.id, ev.detailUrl)
-                    ev
-                }
-            }.filter { it.isStillRelevant(today) }
+                        try {
+                            val detailHtml = fetchDetail(ev.detailUrl)
+                            val subs = HtmlParser.parseSubscriptions(detailHtml)
+                            ev.copy(
+                                subsOpenDate = subs.opening,
+                                subsCloseDate = subs.closing,
+                                zone = subs.zone
+                            )
+                        } catch (ce: CancellationException) {
+                            throw ce
+                        } catch (e: Exception) {
+                            Timber.w(e, "Unable to enrich event id=%s url=%s", ev.id, ev.detailUrl)
+                            ev
+                        }
+                    }
+                }.awaitAll()
+            }
+            return enriched.filter { it.isStillRelevant(today) }
         }
     }
 

@@ -11,6 +11,8 @@ import it.buonacaccia.app.data.BuonaCacciaRegions
 import it.buonacaccia.app.data.EventStore
 import it.buonacaccia.app.data.EventsRepository
 import it.buonacaccia.app.data.FetchSafety
+import it.buonacaccia.app.data.NotificationPreferences
+import it.buonacaccia.app.data.NotificationRuleEngine
 import it.buonacaccia.app.data.shouldEnrichRegistrationWindow
 import it.buonacaccia.app.notify.Notifier
 import kotlinx.coroutines.CancellationException
@@ -34,14 +36,26 @@ class NewEventsWorker(
         val cachedSnapshot = EventStore.cachedEventsFlow(applicationContext).first()
         val seenKeysBefore = EventStore.seenIdsFlow(applicationContext).first()
         val minimumExpectedCount = FetchSafety.minimumExpectedCountForFullDataset(cachedSnapshot.size)
+        val interestedTypes = EventStore.notifyTypesFlow(applicationContext).first()
         val interestedRegions = EventStore.notifyRegionsFlow(applicationContext).first()
-        val filtersByRegion = interestedRegions.associateWith { BuonaCacciaRegions.filterOf(it) }
+        val interestedZones = EventStore.notifyZonesFlow(applicationContext).first()
+        val mutedTypes = EventStore.muteTypesFlow(applicationContext).first()
+        val typeRegionRules = EventStore.notifyTypeRegionRulesFlow(applicationContext).first()
+        val notificationPreferences = NotificationPreferences(
+            mutedTypes = mutedTypes,
+            allowedTypes = interestedTypes,
+            defaultRegions = interestedRegions,
+            defaultZones = interestedZones,
+            typeRegionRules = typeRegionRules
+        )
+        val prefilterRegions = NotificationRuleEngine.regionsForFetchPrefilter(notificationPreferences) ?: emptySet()
+        val filtersByRegion = prefilterRegions.associateWith { BuonaCacciaRegions.filterOf(it) }
         val filters = filtersByRegion.values.filterNotNull()
         val unmappedRegions = filtersByRegion.filterValues { it == null }.keys
-        val canUseRegionFilters = interestedRegions.isNotEmpty() && unmappedRegions.isEmpty() && filters.isNotEmpty()
+        val canUseRegionFilters = prefilterRegions.isNotEmpty() && unmappedRegions.isEmpty() && filters.isNotEmpty()
 
-        if (interestedRegions.isNotEmpty() && filters.isEmpty()) {
-            Timber.w("No BuonaCaccia region filters mapped from %s, falling back to full fetch", interestedRegions)
+        if (prefilterRegions.isNotEmpty() && filters.isEmpty()) {
+            Timber.w("No BuonaCaccia region filters mapped from %s, falling back to full fetch", prefilterRegions)
         } else if (unmappedRegions.isNotEmpty()) {
             Timber.w(
                 "Some interested regions could not be mapped to BuonaCaccia filters (%s), falling back to full fetch",
@@ -87,21 +101,9 @@ class NewEventsWorker(
         }
 
         val seenKeys = EventStore.seenIdsFlow(applicationContext).first()
-        val interestedTypes = EventStore.notifyTypesFlow(applicationContext).first()
-        val mutedTypes = EventStore.muteTypesFlow(applicationContext).first()
-
         val fresh = cached
             .filter { EventStore.eventKeyOf(it) !in seenKeys }
-            .filter { e ->
-                val typeOk = if (mutedTypes.isNotEmpty()) {
-                    e.type?.isNotBlank() != true || (e.type !in mutedTypes)
-                } else {
-                    interestedTypes.isEmpty() || (e.type?.isNotBlank() == true && e.type in interestedTypes)
-                }
-                val regionOk = interestedRegions.isEmpty() ||
-                    (e.region?.isNotBlank() == true && e.region in interestedRegions)
-                typeOk && regionOk
-            }
+            .filter { event -> NotificationRuleEngine.shouldNotify(event, notificationPreferences) }
 
         Timber.d("toNotify count=%d", fresh.size)
         fresh.forEach { e ->

@@ -201,6 +201,65 @@ class HtmlParserTest {
         assertEquals("green", event.statusColor)
     }
 
+    @Test
+    fun guessZone_extractsFromTitle() {
+        val event1 = BcEvent(
+            id = "1",
+            type = "CFM",
+            title = "MF-Aggiornam. metodologico E/G - Zona Pesaro_Patto associativo",
+            region = "Marche",
+            startDate = LocalDate.now(),
+            endDate = LocalDate.now(),
+            fee = "0 €",
+            location = "Pesaro (PU)",
+            enrolled = "0",
+            status = "Aperto",
+            detailUrl = "https://example.com"
+        )
+        assertEquals("Pesaro", event1.guessZone())
+
+        val event2 = event1.copy(title = "Assemblea di Zona Ostiense - Convocazione")
+        assertEquals("Ostiense", event2.guessZone())
+
+        val event3 = event1.copy(title = "MF-Percorso di tirocinio - Zona Lucca Massa Carrara - Tirocinio 2")
+        assertEquals("Lucca Massa Carrara", event3.guessZone())
+    }
+
+    @Test
+    fun guessZone_ignoresProvinceAbbreviation() {
+        val event = BcEvent(
+            id = "2",
+            type = "PO",
+            title = "Piccole Orme - Blackout a Mostropoli",
+            region = "Piemonte",
+            startDate = LocalDate.now(),
+            endDate = LocalDate.now(),
+            fee = "55 €",
+            location = "Alba (CN)",
+            enrolled = "10",
+            status = "Aperto",
+            detailUrl = "https://example.com"
+        )
+        // CN is a province abbreviation (2 letters), so it should be ignored and guessZone should return null
+        assertEquals(null, event.guessZone())
+    }
+
+    @Test
+    fun parseSubscriptions_extractsFromDetailText() {
+        val html = """
+            <html>
+              <body>
+                <h2>[Marche] MF-Aggiornam. metodologico E/G - Zona Pesaro_Patto associativo</h2>
+                <p>Le iscrizioni apriranno il 10/12/2026 e chiuderanno il 20/12/2026.</p>
+                <p>Altro testo descrittivo...</p>
+              </body>
+            </html>
+        """.trimIndent()
+
+        val subs = HtmlParser.parseSubscriptions(html)
+        assertEquals("Pesaro", subs.zone)
+    }
+
     private fun assertTrue(value: Boolean) {
         assertEquals(true, value)
     }
