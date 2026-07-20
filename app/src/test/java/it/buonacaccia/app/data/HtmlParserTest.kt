@@ -245,6 +245,28 @@ class HtmlParserTest {
     }
 
     @Test
+    fun guessZone_normalizesSiteFormattingAndKnownNames() {
+        val base = BcEvent(
+            id = "zone",
+            type = "MF",
+            title = "Evento",
+            region = "Lazio",
+            startDate = LocalDate.now(),
+            endDate = LocalDate.now(),
+            fee = null,
+            location = null,
+            enrolled = null,
+            status = null,
+            detailUrl = "https://example.com",
+        )
+
+        assertEquals("Ostiense", base.copy(zone = "  ZONA   OSTIENSE  ").guessZone())
+        assertEquals("Pesaro", base.copy(zone = "Pesaro_Patto associativo").guessZone())
+        assertEquals("Riviera d’Ulisse", base.copy(zone = "riviera d’ulisse").guessZone())
+        assertEquals(null, base.copy(zone = "(da definire)").guessZone())
+    }
+
+    @Test
     fun parseSubscriptions_extractsFromDetailText() {
         val html = """
             <html>

@@ -19,6 +19,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Category
 import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material.icons.filled.NotificationsActive
@@ -57,6 +58,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import it.buonacaccia.app.data.NotificationTypeRegionRule
+import it.buonacaccia.app.data.ZoneCatalog
 
 private enum class NotificationSettingsPage { OVERVIEW, TYPES, REGIONS, ZONES, TYPE_RULES, TYPE_RULE_DETAIL }
 
@@ -313,16 +315,31 @@ internal fun NotificationSettingsDialog(
                         }
 
                         NotificationSettingsPage.ZONES -> {
-                            SearchField(query, "Cerca zona", onQueryChange = { query = it })
-                            if (availableZones.isEmpty()) {
-                                Text("Nessuna zona rilevata negli eventi attuali.", Modifier.padding(16.dp))
-                            } else {
-                                SelectionList(
-                                    values = availableZones.filterBy(query),
-                                    selected = selectedZones,
-                                    onToggle = { selectedZones = selectedZones.toggle(it) },
-                                )
+                            SearchField(query, "Cerca o inserisci zona", onQueryChange = { query = it })
+                            val normalizedQuery = ZoneCatalog.normalize(query)
+                            val zoneOptions = (availableZones + selectedZones)
+                                .mapNotNull(ZoneCatalog::normalize)
+                                .distinctBy { it.lowercase() }
+                                .sortedWith(String.CASE_INSENSITIVE_ORDER)
+                            if (normalizedQuery != null && zoneOptions.none {
+                                    it.equals(normalizedQuery, ignoreCase = true)
+                                }) {
+                                TextButton(
+                                    onClick = {
+                                        selectedZones = selectedZones + normalizedQuery
+                                        query = ""
+                                    },
+                                    modifier = Modifier.padding(horizontal = 12.dp),
+                                ) {
+                                    Icon(Icons.Default.Add, contentDescription = null)
+                                    Text("Aggiungi \"$normalizedQuery\"")
+                                }
                             }
+                            SelectionList(
+                                values = zoneOptions.filterBy(query),
+                                selected = selectedZones,
+                                onToggle = { selectedZones = selectedZones.toggle(it) },
+                            )
                         }
 
                         NotificationSettingsPage.TYPE_RULES -> {

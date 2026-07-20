@@ -576,16 +576,17 @@ private fun FiltersRow(
                 modifier = Modifier.weight(1f)
             ) {
                 OutlinedTextField(
-                    modifier = Modifier.menuAnchor(ExposedDropdownMenuAnchorType.PrimaryNotEditable).fillMaxWidth(),
+                    modifier = Modifier.menuAnchor(ExposedDropdownMenuAnchorType.PrimaryEditable).fillMaxWidth(),
                     value = selectedZone,
-                    onValueChange = {},
-                    readOnly = true,
+                    onValueChange = onZoneChange,
                     singleLine = true,
                     label = { Text("Zona") },
                     trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expandedZ) }
                 )
                 ExposedDropdownMenu(expanded = expandedZ, onDismissRequest = { expandedZ = false }) {
-                    zones.forEach { z ->
+                    zones.filter {
+                        selectedZone == "Tutte" || it.contains(selectedZone, ignoreCase = true)
+                    }.forEach { z ->
                         DropdownMenuItem(
                             text = { Text(z) },
                             onClick = { onZoneChange(z); expandedZ = false }
