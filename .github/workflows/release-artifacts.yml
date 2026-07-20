@@ -61,6 +61,7 @@ jobs:
         run: |
           set -euo pipefail
           chmod +x ./gradlew
+          mkdir -p build
           xcodebuild \
             -project iosApp/iosApp.xcodeproj \
             -scheme iosApp \

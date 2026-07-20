@@ -89,15 +89,15 @@ internal fun NotificationSettingsDialog(
 ) {
     var page by remember { mutableStateOf(NotificationSettingsPage.OVERVIEW) }
     var query by remember { mutableStateOf("") }
-    var mode by remember {
+    var mode by remember(interestedTypes, mutedTypes) {
         mutableStateOf(if (mutedTypes.isNotEmpty()) NotifyMode.DENYLIST else NotifyMode.ALLOWLIST)
     }
-    var selectedTypes by remember {
-        mutableStateOf(if (mode == NotifyMode.DENYLIST) mutedTypes else interestedTypes)
+    var selectedTypes by remember(interestedTypes, mutedTypes) {
+        mutableStateOf(if (mutedTypes.isNotEmpty()) mutedTypes else interestedTypes)
     }
-    var selectedRegions by remember { mutableStateOf(interestedRegions) }
-    var selectedZones by remember { mutableStateOf(interestedZones) }
-    var rulesByType by remember {
+    var selectedRegions by remember(interestedRegions) { mutableStateOf(interestedRegions) }
+    var selectedZones by remember(interestedZones) { mutableStateOf(interestedZones) }
+    var rulesByType by remember(typeRegionRules) {
         mutableStateOf(typeRegionRules.associate { it.type to it.regions })
     }
     var activeType by remember { mutableStateOf<String?>(null) }
