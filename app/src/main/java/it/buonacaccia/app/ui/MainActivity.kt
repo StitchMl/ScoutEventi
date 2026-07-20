@@ -101,6 +101,7 @@ import androidx.core.net.toUri
 import it.buonacaccia.app.R
 import it.buonacaccia.app.data.BcEvent
 import it.buonacaccia.app.data.EventStore
+import it.buonacaccia.app.data.NotificationTypeRegionRule
 import it.buonacaccia.app.data.guessZone
 import it.buonacaccia.app.ui.components.EventCard
 import it.buonacaccia.app.ui.theme.BuonaCacciaTheme
@@ -234,6 +235,9 @@ private fun MainScreen(
     val interestedZones by EventStore
         .notifyZonesFlow(context)
         .collectAsState(initial = emptySet())
+    val typeRegionRules by EventStore
+        .notifyTypeRegionRulesFlow(context)
+        .collectAsState(initial = emptyList())
 
     val state = vm.state
     LaunchedEffect(cached) {
@@ -399,166 +403,34 @@ private fun MainScreen(
     }
 
     if (showNotificationSettings) {
-        var mode by remember(interestedTypes, mutedTypes) {
-            mutableStateOf(if (mutedTypes.isNotEmpty()) NotifyMode.DENYLIST else NotifyMode.ALLOWLIST)
-        }
-
-        var localTypes by remember(interestedTypes, mutedTypes, availableTypes) {
-            mutableStateOf(
-                (if (mode == NotifyMode.DENYLIST) mutedTypes else interestedTypes)
-                    .intersect(availableTypes.toSet())
-            )
-        }
-
-        var localRegions by remember(interestedRegions) {
-            mutableStateOf(interestedRegions.intersect(vm.regions.toSet()))
-        }
-
-        var localZones by remember(interestedZones) {
-            mutableStateOf(interestedZones.intersect(availableZones.toSet()))
-        }
-
-        AlertDialog(
-            onDismissRequest = { showNotificationSettings = false },
-            confirmButton = {
-                TextButton(onClick = {
-                    scope.launch {
-                        when (mode) {
-                            NotifyMode.ALLOWLIST -> {
-                                EventStore.setNotifyTypes(context, localTypes)
-                                EventStore.setMuteTypes(context, emptySet())
-                            }
-                            NotifyMode.DENYLIST -> {
-                                EventStore.setMuteTypes(context, localTypes)
-                                EventStore.setNotifyTypes(context, emptySet())
-                            }
+        NotificationSettingsDialog(
+            interestedTypes = interestedTypes,
+            mutedTypes = mutedTypes,
+            interestedRegions = interestedRegions,
+            interestedZones = interestedZones,
+            typeRegionRules = typeRegionRules,
+            availableTypes = availableTypes,
+            availableRegions = vm.regions,
+            availableZones = availableZones,
+            onDismiss = { showNotificationSettings = false },
+            onSave = { mode, types, regions, zones, rules ->
+                scope.launch {
+                    when (mode) {
+                        NotifyMode.ALLOWLIST -> {
+                            EventStore.setNotifyTypes(context, types)
+                            EventStore.setMuteTypes(context, emptySet())
                         }
-                        EventStore.setNotifyRegions(context, localRegions)
-                        EventStore.setNotifyZones(context, localZones)
-                    }
-                    showNotificationSettings = false
-                }) { Text("Salva") }
-            },
-            dismissButton = {
-                TextButton(onClick = { showNotificationSettings = false }) { Text("Annulla") }
-            },
-            title = { Text("Impostazioni notifiche") },
-            text = {
-                Column(
-                    modifier = Modifier
-                        .heightIn(max = 450.dp)
-                        .verticalScroll(rememberScrollState()),
-                    verticalArrangement = Arrangement.spacedBy(16.dp)
-                ) {
-                    Text("Filtro per tipo di evento", style = MaterialTheme.typography.titleMedium)
-                    
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        FilterChip(
-                            selected = mode == NotifyMode.ALLOWLIST,
-                            onClick = {
-                                mode = NotifyMode.ALLOWLIST
-                                localTypes = interestedTypes.intersect(availableTypes.toSet())
-                            },
-                            label = { Text("Consenti solo") }
-                        )
-                        FilterChip(
-                            selected = mode == NotifyMode.DENYLIST,
-                            onClick = {
-                                mode = NotifyMode.DENYLIST
-                                localTypes = mutedTypes.intersect(availableTypes.toSet())
-                            },
-                            label = { Text("Escludi") }
-                        )
-                    }
-
-                    Text(
-                        when (mode) {
-                            NotifyMode.ALLOWLIST ->
-                                "Riceverai notifiche solo per i tipi selezionati. Se non selezioni nulla, le riceverai per tutti."
-                            NotifyMode.DENYLIST  ->
-                                "Riceverai notifiche per tutti tranne quelli selezionati. Se non selezioni nulla, le riceverai per tutti."
-                        },
-                        style = MaterialTheme.typography.bodySmall
-                    )
-
-                    @OptIn(ExperimentalLayoutApi::class)
-                    FlowRow(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        verticalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        availableTypes.forEach { t ->
-                            val selected = t in localTypes
-                            FilterChip(
-                                selected = selected,
-                                onClick = {
-                                    localTypes = if (selected) localTypes - t else localTypes + t
-                                },
-                                label = { Text(t) }
-                            )
+                        NotifyMode.DENYLIST -> {
+                            EventStore.setMuteTypes(context, types)
+                            EventStore.setNotifyTypes(context, emptySet())
                         }
                     }
-
-                    val allSelected = localTypes.size == availableTypes.size && availableTypes.isNotEmpty()
-                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
-                        TextButton(onClick = {
-                            localTypes = if (allSelected) emptySet() else availableTypes.toSet()
-                        }) {
-                            Text(if (allSelected) "Deseleziona tutto" else "Seleziona tutto")
-                        }
-                    }
-
-                    HorizontalDivider()
-
-                    Text("Filtro per regione", style = MaterialTheme.typography.titleMedium)
-                    Text("Riceverai notifiche per le regioni selezionate (nessuna = tutte).", style = MaterialTheme.typography.bodySmall)
-
-                    @OptIn(ExperimentalLayoutApi::class)
-                    FlowRow(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        verticalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        vm.regions.filter { it != "Tutte" }.forEach { r ->
-                            val selected = r in localRegions
-                            FilterChip(
-                                selected = selected,
-                                onClick = {
-                                    localRegions = if (selected) localRegions - r else localRegions + r
-                                },
-                                label = { Text(r) }
-                            )
-                        }
-                    }
-
-                    HorizontalDivider()
-
-                    Text("Filtro per zona/provincia", style = MaterialTheme.typography.titleMedium)
-                    Text("Riceverai notifiche per le zone/sigle selezionate (nessuna = tutte).", style = MaterialTheme.typography.bodySmall)
-
-                    @OptIn(ExperimentalLayoutApi::class)
-                    FlowRow(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        verticalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        if (availableZones.isEmpty()) {
-                            Text("Nessuna zona rilevata negli eventi attuali.", style = MaterialTheme.typography.labelMedium)
-                        } else {
-                            availableZones.forEach { z ->
-                                val selected = z in localZones
-                                FilterChip(
-                                    selected = selected,
-                                    onClick = {
-                                        localZones = if (selected) localZones - z else localZones + z
-                                    },
-                                    label = { Text(z) }
-                                )
-                            }
-                        }
-                    }
+                    EventStore.setNotifyRegions(context, regions)
+                    EventStore.setNotifyZones(context, zones)
+                    EventStore.setNotifyTypeRegionRules(context, rules)
                 }
-            }
+                showNotificationSettings = false
+            },
         )
     }
     if (showBatteryHints) {
