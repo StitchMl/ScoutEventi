@@ -1,12 +1,15 @@
 package it.buonacaccia.app.data
 
 import android.content.Context
+import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.core.stringSetPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import androidx.glance.appwidget.updateAll
+import it.buonacaccia.app.widget.EventsByDateWidget
+import it.buonacaccia.app.widget.EventsWidgetKind
 import it.buonacaccia.app.widget.UpcomingOpeningsWidget
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
@@ -20,22 +23,25 @@ private val Context.dataStore by preferencesDataStore("bc_prefs")
 
 object EventStore {
     private val KEY_SUBSCRIBED_IDS = stringSetPreferencesKey("subscribed_ids")
-    private val KEY_WIDGET_ONLY_FOLLOWED = booleanPreferencesKey("widget_only_followed")
+    private val KEY_WIDGET_ONLY_FOLLOWED_UPCOMING = booleanPreferencesKey("widget_only_followed_upcoming")
+    private val KEY_WIDGET_ONLY_FOLLOWED_BY_DATE = booleanPreferencesKey("widget_only_followed_by_date")
     private val KEY_THEME_MODE = stringPreferencesKey("theme_mode")
     private val KEY_SEEN_IDS = stringSetPreferencesKey("seen_ids")
     private val KEY_NOTIFY_TYPES = stringSetPreferencesKey("notify_types")
     private val KEY_NOTIFY_REGIONS = stringSetPreferencesKey("notify_regions")
+    private val KEY_NOTIFY_ZONES = stringSetPreferencesKey("notify_zones")
+    private val KEY_NOTIFY_TYPE_REGION_RULES = stringSetPreferencesKey("notify_type_region_rules")
     private val KEY_MUTE_TYPES = stringSetPreferencesKey("mute_types")
     private val KEY_SENT_REMINDERS = stringSetPreferencesKey("sent_reminders")
     private val KEY_CACHED_EVENTS = stringSetPreferencesKey("cached_events")
 
-    fun widgetOnlyFollowedFlow(ctx: Context): Flow<Boolean> =
-        ctx.dataStore.data.map { it[KEY_WIDGET_ONLY_FOLLOWED] ?: false }
+    internal fun widgetOnlyFollowedFlow(ctx: Context, kind: EventsWidgetKind): Flow<Boolean> =
+        ctx.dataStore.data.map { it[widgetOnlyFollowedKey(kind)] ?: false }
 
-    suspend fun setWidgetOnlyFollowed(ctx: Context, enabled: Boolean) {
-        ctx.dataStore.edit { it[KEY_WIDGET_ONLY_FOLLOWED] = enabled }
+    internal suspend fun setWidgetOnlyFollowed(ctx: Context, kind: EventsWidgetKind, enabled: Boolean) {
+        ctx.dataStore.edit { it[widgetOnlyFollowedKey(kind)] = enabled }
         updateWidgetsSafely(ctx)
-        Timber.d("EventStore.setWidgetOnlyFollowed enabled=%s", enabled)
+        Timber.d("EventStore.setWidgetOnlyFollowed kind=%s enabled=%s", kind, enabled)
     }
 
     enum class ThemeMode { SYSTEM, LIGHT, DARK }
@@ -62,8 +68,7 @@ object EventStore {
         }
 
     private fun isActive(e: BcEvent, today: LocalDate = LocalDate.now()): Boolean {
-        val end = e.endDate
-        return end == null || !end.isBefore(today)
+        return e.isStillRelevant(today)
     }
 
     @Suppress("unused")
@@ -105,13 +110,7 @@ object EventStore {
 
         ctx.dataStore.edit { pref ->
             val cur = (pref[KEY_CACHED_EVENTS] ?: emptySet()).mapNotNull { decodeEvent(it) }
-            val (toKeep, toDrop) = cur.partition { e ->
-                val close = e.subsCloseDate
-                val end = e.endDate
-                val subsOk = close == null || !close.isBefore(today)
-                val endOk = end == null || !end.isBefore(today)
-                subsOk && endOk
-            }
+            val (toKeep, toDrop) = cur.partition { e -> isActive(e, today) }
 
             removed = toDrop.map(::eventKeyOf).toSet()
             pref[KEY_CACHED_EVENTS] = toKeep.map { encodeEvent(it) }.toSet()
@@ -141,13 +140,14 @@ object EventStore {
             encDate(e.startDate), encDate(e.endDate),
             enc(e.fee), enc(e.location), enc(e.enrolled),
             enc(e.status), enc(e.detailUrl), enc(e.statusColor),
-            enc(e.branch?.name), encDate(e.subsOpenDate), encDate(e.subsCloseDate)
+            enc(e.branch?.name), encDate(e.subsOpenDate), encDate(e.subsCloseDate),
+            enc(e.zone)
         ).joinToString("|")
     }
 
     private fun decodeEvent(s: String): BcEvent? = runCatching {
         val p = s.split("|")
-        val v = if (p.size < 15) p + List(15 - p.size) { "" } else p
+        val v = if (p.size < 16) p + List(16 - p.size) { "" } else p
         BcEvent(
             id = dec(v[0]),
             type = dec(v[1]),
@@ -163,7 +163,8 @@ object EventStore {
             statusColor = dec(v[11]),
             branch = dec(v[12])?.let { runCatching { Branch.valueOf(it) }.getOrNull() },
             subsOpenDate = decDate(v[13]),
-            subsCloseDate = decDate(v[14])
+            subsCloseDate = decDate(v[14]),
+            zone = dec(v[15])
         )
     }.getOrNull()
 
@@ -194,6 +195,30 @@ object EventStore {
     suspend fun setNotifyRegions(ctx: Context, regions: Set<String>) {
         ctx.dataStore.edit { it[KEY_NOTIFY_REGIONS] = regions }
         Timber.d("EventStore.setNotifyRegions %s", regions)
+    }
+
+    fun notifyZonesFlow(ctx: Context): Flow<Set<String>> =
+        ctx.dataStore.data.map { it[KEY_NOTIFY_ZONES] ?: emptySet() }
+
+    suspend fun setNotifyZones(ctx: Context, zones: Set<String>) {
+        ctx.dataStore.edit { it[KEY_NOTIFY_ZONES] = zones }
+        Timber.d("EventStore.setNotifyZones %s", zones)
+    }
+
+    fun notifyTypeRegionRulesFlow(ctx: Context): Flow<List<NotificationTypeRegionRule>> =
+        ctx.dataStore.data.map { pref ->
+            decodeNotifyTypeRegionRules(pref[KEY_NOTIFY_TYPE_REGION_RULES] ?: emptySet())
+        }
+
+    @Suppress("unused")
+    suspend fun setNotifyTypeRegionRules(ctx: Context, rules: Collection<NotificationTypeRegionRule>) {
+        val normalizedRules = rules
+            .mapNotNull(::normalizeNotifyTypeRegionRule)
+            .sortedBy { it.type.lowercase() }
+        ctx.dataStore.edit { pref ->
+            pref[KEY_NOTIFY_TYPE_REGION_RULES] = normalizedRules.map(::encodeNotifyTypeRegionRule).toSet()
+        }
+        Timber.d("EventStore.setNotifyTypeRegionRules count=%d", normalizedRules.size)
     }
 
     fun seenIdsFlow(ctx: Context): Flow<Set<String>> =
@@ -237,5 +262,50 @@ object EventStore {
     private suspend fun updateWidgetsSafely(ctx: Context) {
         runCatching { UpcomingOpeningsWidget().updateAll(ctx) }
             .onFailure { Timber.w(it, "Unable to refresh widgets after EventStore update") }
+        runCatching { EventsByDateWidget().updateAll(ctx) }
+            .onFailure { Timber.w(it, "Unable to refresh events-by-date widget after EventStore update") }
     }
+
+    private fun encodeNotifyTypeRegionRule(rule: NotificationTypeRegionRule): String {
+        val encodedType = enc(rule.type)
+        val encodedRegions = rule.regions
+            .map(::enc)
+            .sorted()
+            .joinToString(",")
+        return "$encodedType|$encodedRegions"
+    }
+
+    private fun decodeNotifyTypeRegionRules(rawRules: Set<String>): List<NotificationTypeRegionRule> =
+        rawRules.mapNotNull(::decodeNotifyTypeRegionRule)
+            .mapNotNull(::normalizeNotifyTypeRegionRule)
+            .sortedBy { it.type.lowercase() }
+
+    private fun decodeNotifyTypeRegionRule(raw: String): NotificationTypeRegionRule? {
+        val sep = raw.indexOf('|')
+        if (sep < 0) return null
+        val type = dec(raw.substring(0, sep))?.trim().orEmpty()
+        if (type.isEmpty()) return null
+        val regions = raw
+            .substring(sep + 1)
+            .split(',')
+            .mapNotNull { token ->
+                token.takeIf { it.isNotEmpty() }?.let(::dec)?.trim()?.takeIf { it.isNotEmpty() }
+            }
+            .toSet()
+        return NotificationTypeRegionRule(type = type, regions = regions)
+    }
+
+    private fun normalizeNotifyTypeRegionRule(rule: NotificationTypeRegionRule): NotificationTypeRegionRule? {
+        val type = rule.type.trim().takeIf { it.isNotEmpty() } ?: return null
+        val regions = rule.regions
+            .mapNotNull { it.trim().takeIf(String::isNotEmpty) }
+            .toCollection(linkedSetOf())
+        return NotificationTypeRegionRule(type = type, regions = regions)
+    }
+
+    private fun widgetOnlyFollowedKey(kind: EventsWidgetKind): Preferences.Key<Boolean> =
+        when (kind) {
+            EventsWidgetKind.UPCOMING_OPENINGS -> KEY_WIDGET_ONLY_FOLLOWED_UPCOMING
+            EventsWidgetKind.EVENTS_BY_DATE -> KEY_WIDGET_ONLY_FOLLOWED_BY_DATE
+        }
 }

@@ -189,9 +189,6 @@ fun EventCard(ev: BcEvent, modifier: Modifier = Modifier) {
                 ev.region?.takeIf { it.isNotBlank() }?.let {
                     AssistChip(onClick = {}, label = { Text(it) })
                 }
-                ev.type?.takeIf { it.isNotBlank() }?.let {
-                    AssistChip(onClick = {}, label = { Text(it) })
-                }
                 ev.status?.takeIf { it.isNotBlank() }?.let {
                     AssistChip(onClick = {}, label = { Text(it) })
                 }

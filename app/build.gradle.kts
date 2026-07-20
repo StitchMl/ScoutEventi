@@ -14,15 +14,17 @@ configure<ApplicationExtension> {
     defaultConfig {
         applicationId = "it.buonacaccia.app"
         minSdk = 26
+        //noinspection OldTargetApi
         targetSdk = 36
-        versionCode = 5
-        versionName = "5"
+        versionCode = 6
+        versionName = "6.0.0"
         vectorDrawables { useSupportLibrary = true }
     }
 
     buildTypes {
         release {
             isMinifyEnabled = true
+            isShrinkResources = true
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
@@ -55,6 +57,8 @@ kotlin {
 }
 
 dependencies {
+    implementation(project(":shared"))
+
     implementation(libs.androidx.palette.ktx)
     implementation(libs.androidx.compose.ui.graphics)
     // Compose BOM

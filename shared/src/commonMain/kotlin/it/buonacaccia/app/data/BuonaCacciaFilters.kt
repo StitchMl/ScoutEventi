@@ -1,7 +1,5 @@
 package it.buonacaccia.app.data
 
-import java.util.Locale
-
 enum class BuonaCacciaSort(val code: String) {
     BY_TYPE("C"),
     BY_DATE("D"),
@@ -105,7 +103,7 @@ object BuonaCacciaRegions {
     private fun normalize(regionName: String?): String? {
         val trimmed = regionName?.trim()?.takeIf { it.isNotEmpty() } ?: return null
         return trimmed
-            .lowercase(Locale.ROOT)
+            .lowercase()
             .replace(Regex("[^\\p{L}\\p{N}]+"), " ")
             .replace("valdaosta", "valle d aosta")
             .replace(Regex("\\s+"), " ")
@@ -176,7 +174,7 @@ object BuonaCacciaScopes {
             .toCollection(linkedSetOf())
 
     fun fallbackFiltersForQueryParams(queryParams: Map<String, String>): List<BuonaCacciaFilter>? {
-        val normalizedKeys = queryParams.mapKeys { it.key.uppercase(Locale.ROOT) }
+        val normalizedKeys = queryParams.mapKeys { it.key.uppercase() }
         val regionCode = normalizedKeys["RID"]?.trim()?.ifBlank { null }
         val categoryCode = normalizedKeys["CID"]?.trim()?.ifBlank { null }
         val sort = BuonaCacciaSort.fromCode(normalizedKeys["SID"])
