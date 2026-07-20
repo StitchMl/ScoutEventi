@@ -11,6 +11,7 @@ import it.buonacaccia.app.data.BuonaCacciaScopes
 import it.buonacaccia.app.data.EventStore
 import it.buonacaccia.app.data.EventsRepository
 import it.buonacaccia.app.data.FetchSafety
+import it.buonacaccia.app.data.NotificationRuleEngine
 import it.buonacaccia.app.notify.Notifier
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
@@ -91,11 +92,13 @@ class SubscriptionsWorker(
             EventStore.purgeClosed(applicationContext, LocalDate.now())
 
             val events = EventStore.cachedEventsFlow(applicationContext).first()
+            val notificationPreferences = EventStore.notificationPreferences(applicationContext)
             val sent = EventStore.sentRemindersFlow(applicationContext).first().toMutableSet()
             val newReminderKeys = mutableSetOf<String>()
 
             val toRemind = events.filter { ev ->
-                EventStore.eventKeyOf(ev) in subscribed
+                EventStore.eventKeyOf(ev) in subscribed &&
+                    NotificationRuleEngine.shouldNotify(ev, notificationPreferences)
             }
 
             val today = LocalDate.now()

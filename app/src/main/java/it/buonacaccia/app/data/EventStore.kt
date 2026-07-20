@@ -12,6 +12,7 @@ import it.buonacaccia.app.widget.EventsByDateWidget
 import it.buonacaccia.app.widget.EventsWidgetKind
 import it.buonacaccia.app.widget.UpcomingOpeningsWidget
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import timber.log.Timber
 import java.net.URLDecoder
@@ -210,7 +211,6 @@ object EventStore {
             decodeNotifyTypeRegionRules(pref[KEY_NOTIFY_TYPE_REGION_RULES] ?: emptySet())
         }
 
-    @Suppress("unused")
     suspend fun setNotifyTypeRegionRules(ctx: Context, rules: Collection<NotificationTypeRegionRule>) {
         val normalizedRules = rules
             .mapNotNull(::normalizeNotifyTypeRegionRule)
@@ -219,6 +219,19 @@ object EventStore {
             pref[KEY_NOTIFY_TYPE_REGION_RULES] = normalizedRules.map(::encodeNotifyTypeRegionRule).toSet()
         }
         Timber.d("EventStore.setNotifyTypeRegionRules count=%d", normalizedRules.size)
+    }
+
+    suspend fun notificationPreferences(ctx: Context): NotificationPreferences {
+        val pref = ctx.dataStore.data.first()
+        return NotificationPreferences(
+            mutedTypes = pref[KEY_MUTE_TYPES] ?: emptySet(),
+            allowedTypes = pref[KEY_NOTIFY_TYPES] ?: emptySet(),
+            defaultRegions = pref[KEY_NOTIFY_REGIONS] ?: emptySet(),
+            defaultZones = pref[KEY_NOTIFY_ZONES] ?: emptySet(),
+            typeRegionRules = decodeNotifyTypeRegionRules(
+                pref[KEY_NOTIFY_TYPE_REGION_RULES] ?: emptySet()
+            ),
+        )
     }
 
     fun seenIdsFlow(ctx: Context): Flow<Set<String>> =
