@@ -112,6 +112,39 @@ class NotificationRuleEngineTest {
         assertTrue(NotificationRuleEngine.shouldNotify(eventMilano, emptyPrefs))
     }
 
+    @Test
+    fun shouldNotify_supportsPiccoleOrmeInLazioAndCfaInEveryRegion() {
+        val preferences = NotificationPreferences(
+            allowedTypes = setOf("Piccole Orme", "CFA"),
+            typeRegionRules = listOf(
+                NotificationTypeRegionRule("Piccole Orme", setOf("Lazio")),
+                NotificationTypeRegionRule("CFA", emptySet()),
+            ),
+        )
+
+        assertTrue(NotificationRuleEngine.shouldNotify(event("Piccole Orme", "Lazio"), preferences))
+        assertFalse(NotificationRuleEngine.shouldNotify(event("Piccole Orme", "Toscana"), preferences))
+        assertTrue(NotificationRuleEngine.shouldNotify(event("CFA", "Lazio"), preferences))
+        assertTrue(NotificationRuleEngine.shouldNotify(event("CFA", "Toscana"), preferences))
+    }
+
+    @Test
+    fun shouldNotify_appliesZoneAlongsideTypeSpecificRegion() {
+        val preferences = NotificationPreferences(
+            allowedTypes = setOf("Piccole Orme"),
+            defaultZones = setOf("Roma"),
+            typeRegionRules = listOf(
+                NotificationTypeRegionRule("Piccole Orme", setOf("Lazio")),
+            ),
+        )
+
+        val roma = event("Piccole Orme", "Lazio").copy(zone = "Roma")
+        val ostiense = event("Piccole Orme", "Lazio").copy(zone = "Ostiense")
+
+        assertTrue(NotificationRuleEngine.shouldNotify(roma, preferences))
+        assertFalse(NotificationRuleEngine.shouldNotify(ostiense, preferences))
+    }
+
     private fun event(type: String?, region: String?) = BcEvent(
         id = "id-${type ?: "none"}-${region ?: "none"}",
         type = type,

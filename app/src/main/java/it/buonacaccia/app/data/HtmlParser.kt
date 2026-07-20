@@ -260,9 +260,12 @@ object HtmlParser {
         var close = grab("MainContent_EventFormView_lbSubsTo")
         var seats = doc.selectFirst("#MainContent_EventFormView_lbSeats")?.text()?.trim()
         var taken = doc.selectFirst("#MainContent_EventFormView_lbTaken")?.text()?.trim()
-        var zone = doc.selectFirst("#MainContent_EventFormView_lbZone")?.text()?.trim()?.ifBlank { null }
+        var zone = ZoneCatalog.normalize(
+            doc.selectFirst("#MainContent_EventFormView_lbZone")?.text()
+        )
 
         val text = doc.text()
+        val structuredText = doc.wholeText()
 
         if (open == null) {
             Regex("(?i)apriranno\\s+il\\s+(\\d{1,2}/\\d{1,2}/\\d{4})")
@@ -282,12 +285,12 @@ object HtmlParser {
         }
         if (zone == null) {
             Regex("(?i)zona:\\s*([^\\n\\r<|]+)")
-                .find(text)?.groupValues?.getOrNull(1)?.let { zone = it.trim() }
+                .find(structuredText)?.groupValues?.getOrNull(1)?.let {
+                    zone = ZoneCatalog.normalize(it)
+                }
         }
         if (zone == null) {
-            Regex(
-                "\\b[Zz]ona\\s+([A-Z\\u00C0-\\u00DC][a-zA-Z\\u00C0-\\u00FF']+(?:\\s+(?:di|dei|delle|della|del|da|in|sotto|d')\\s+[A-Z\\u00C0-\\u00DC][a-zA-Z\\u00C0-\\u00FF']+)?(?:\\s+[A-Z\\u00C0-\\u00DC][a-zA-Z\\u00C0-\\u00FF']+)*)"
-            ).find(text)?.groupValues?.getOrNull(1)?.let { zone = it.trim() }
+            zone = ZoneCatalog.fromTitle(text)
         }
 
         if (open == null && close == null) {

@@ -11,7 +11,6 @@ import it.buonacaccia.app.data.BuonaCacciaRegions
 import it.buonacaccia.app.data.EventStore
 import it.buonacaccia.app.data.EventsRepository
 import it.buonacaccia.app.data.FetchSafety
-import it.buonacaccia.app.data.NotificationPreferences
 import it.buonacaccia.app.data.NotificationRuleEngine
 import it.buonacaccia.app.data.shouldEnrichRegistrationWindow
 import it.buonacaccia.app.notify.Notifier
@@ -36,18 +35,7 @@ class NewEventsWorker(
         val cachedSnapshot = EventStore.cachedEventsFlow(applicationContext).first()
         val seenKeysBefore = EventStore.seenIdsFlow(applicationContext).first()
         val minimumExpectedCount = FetchSafety.minimumExpectedCountForFullDataset(cachedSnapshot.size)
-        val interestedTypes = EventStore.notifyTypesFlow(applicationContext).first()
-        val interestedRegions = EventStore.notifyRegionsFlow(applicationContext).first()
-        val interestedZones = EventStore.notifyZonesFlow(applicationContext).first()
-        val mutedTypes = EventStore.muteTypesFlow(applicationContext).first()
-        val typeRegionRules = EventStore.notifyTypeRegionRulesFlow(applicationContext).first()
-        val notificationPreferences = NotificationPreferences(
-            mutedTypes = mutedTypes,
-            allowedTypes = interestedTypes,
-            defaultRegions = interestedRegions,
-            defaultZones = interestedZones,
-            typeRegionRules = typeRegionRules
-        )
+        val notificationPreferences = EventStore.notificationPreferences(applicationContext)
         val prefilterRegions = NotificationRuleEngine.regionsForFetchPrefilter(notificationPreferences) ?: emptySet()
         val filtersByRegion = prefilterRegions.associateWith { BuonaCacciaRegions.filterOf(it) }
         val filters = filtersByRegion.values.filterNotNull()

@@ -16,8 +16,8 @@ configure<ApplicationExtension> {
         minSdk = 26
         //noinspection OldTargetApi
         targetSdk = 36
-        versionCode = 6
-        versionName = "6.0.0"
+        versionCode = 7
+        versionName = "6.1.0"
         vectorDrawables { useSupportLibrary = true }
     }
 
