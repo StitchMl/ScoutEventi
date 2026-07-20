@@ -1,3 +1,5 @@
 <resources>
     <string name="app_name">Buona Caccia</string>
+    <string name="widget_upcoming_name">Aperture imminenti</string>
+    <string name="widget_events_by_date_name">Eventi per data</string>
 </resources>

@@ -1,0 +1,9 @@
+{
+  "name": "scouteventi-ios-tools",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "blakejs": "^1.2.1",
+    "tweetnacl": "^1.0.3"
+  }
+}

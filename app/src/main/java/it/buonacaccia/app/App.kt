@@ -10,12 +10,14 @@ import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.OutOfQuotaPolicy
 import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
+import it.buonacaccia.app.data.EventStore
 import it.buonacaccia.app.background.NewEventsWorker
 import it.buonacaccia.app.background.SubscriptionsWorker
 import it.buonacaccia.app.data.EventsRepository
 import it.buonacaccia.app.di.networkModule
 import it.buonacaccia.app.notify.Notifier
 import it.buonacaccia.app.ui.EventsViewModel
+import kotlinx.coroutines.runBlocking
 import org.koin.android.ext.koin.androidContext
 import org.koin.android.ext.koin.androidLogger
 import org.koin.androidx.workmanager.koin.workManagerFactory
@@ -24,6 +26,7 @@ import org.koin.core.module.dsl.singleOf
 import org.koin.core.module.dsl.viewModelOf
 import org.koin.dsl.module
 import timber.log.Timber
+import java.time.LocalDate
 import java.time.Duration
 import java.time.ZoneId
 import java.time.ZonedDateTime
@@ -52,9 +55,20 @@ class App : Application(), Configuration.Provider {
         }
 
         Notifier.ensureChannel(this)
+        pruneStaleCachedEvents()
         scheduleWorkers()
 
         Timber.d("Koin e WorkManager inizializzati correttamente")
+    }
+
+    private fun pruneStaleCachedEvents() {
+        runCatching {
+            runBlocking {
+                EventStore.purgeClosed(this@App, LocalDate.now())
+            }
+        }.onFailure { error ->
+            Timber.w(error, "Unable to prune stale cached events on startup")
+        }
     }
 
     private fun delayToNextTwoAm(): Long {

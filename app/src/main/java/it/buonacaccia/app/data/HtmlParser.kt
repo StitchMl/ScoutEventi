@@ -93,6 +93,7 @@ object HtmlParser {
         return rows.mapNotNull { parseStructuredRow(it, today) }
     }
 
+    @Suppress("unused")
     private fun parseStructuredRow(row: Element, today: LocalDate): BcEvent? {
         val cells = row.select("> th, > td")
         if (cells.isEmpty()) return null
@@ -108,9 +109,6 @@ object HtmlParser {
 
         val detailUrl = link.absUrl("href").ifBlank { return null }
         val start = parseDate(cells.getOrNull(titleIndex + 2)?.text())
-        if (start?.isBefore(today) == true) {
-            return null
-        }
 
         val branch = detectBranch(cells.getOrNull(0) ?: row)
         val event = BcEvent(
@@ -132,6 +130,7 @@ object HtmlParser {
         return event
     }
 
+    @Suppress("unused")
     private fun parseFlexibleEvents(doc: Document, today: LocalDate): List<BcEvent> {
         val events = LinkedHashMap<String, BcEvent>()
 
@@ -147,9 +146,6 @@ object HtmlParser {
             val dates = extractDates(context)
             val start = dates.firstOrNull() ?: return@forEach
             val end = dates.getOrNull(1)
-
-            if (end?.isBefore(today) == true) return@forEach
-            if (end == null && start.isBefore(today)) return@forEach
 
             val sourceElement = container ?: anchor
             val branch = detectBranch(sourceElement)
@@ -264,6 +260,7 @@ object HtmlParser {
         var close = grab("MainContent_EventFormView_lbSubsTo")
         var seats = doc.selectFirst("#MainContent_EventFormView_lbSeats")?.text()?.trim()
         var taken = doc.selectFirst("#MainContent_EventFormView_lbTaken")?.text()?.trim()
+        var zone = doc.selectFirst("#MainContent_EventFormView_lbZone")?.text()?.trim()?.ifBlank { null }
 
         val text = doc.text()
 
@@ -283,12 +280,21 @@ object HtmlParser {
             Regex("(?i)al\\s+momento\\s+ci\\s+sono\\s+(\\d+)\\s+iscritt")
                 .find(text)?.groupValues?.getOrNull(1)?.let { taken = it }
         }
+        if (zone == null) {
+            Regex("(?i)zona:\\s*([^\\n\\r<|]+)")
+                .find(text)?.groupValues?.getOrNull(1)?.let { zone = it.trim() }
+        }
+        if (zone == null) {
+            Regex(
+                "\\b[Zz]ona\\s+([A-Z\\u00C0-\\u00DC][a-zA-Z\\u00C0-\\u00FF']+(?:\\s+(?:di|dei|delle|della|del|da|in|sotto|d')\\s+[A-Z\\u00C0-\\u00DC][a-zA-Z\\u00C0-\\u00FF']+)?(?:\\s+[A-Z\\u00C0-\\u00DC][a-zA-Z\\u00C0-\\u00FF']+)*)"
+            ).find(text)?.groupValues?.getOrNull(1)?.let { zone = it.trim() }
+        }
 
         if (open == null && close == null) {
             Timber.w("SubsWindow: no opening/closing dates found in detail HTML.")
         }
 
-        return SubsWindow(opening = open, closing = close, seats = seats, taken = taken)
+        return SubsWindow(opening = open, closing = close, seats = seats, taken = taken, zone = zone)
     }
 
     private fun normalizeRegion(region: String?): String? =
@@ -372,14 +378,16 @@ object HtmlParser {
             enrolled = primary.enrolled ?: fallback.enrolled,
             status = primary.status ?: fallback.status,
             statusColor = primary.statusColor ?: fallback.statusColor,
-            branch = primary.branch ?: fallback.branch
+            branch = primary.branch ?: fallback.branch,
+            zone = primary.zone ?: fallback.zone
         )
 
     data class SubsWindow(
         val opening: LocalDate?,
         val closing: LocalDate?,
         val seats: String? = null,
-        val taken: String? = null
+        val taken: String? = null,
+        val zone: String? = null
     )
 
     data class EventsPageInspection(

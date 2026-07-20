@@ -9,6 +9,7 @@ import it.buonacaccia.app.data.BcEvent
 import it.buonacaccia.app.data.EventStore
 import it.buonacaccia.app.data.EventsRepository
 import it.buonacaccia.app.data.FetchSafety
+import it.buonacaccia.app.data.shouldEnrichRegistrationWindow
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withTimeout
@@ -27,10 +28,13 @@ class WidgetRefreshWorker(
     override suspend fun doWork(): Result {
         return try {
             withTimeout(20_000) {
-                val onlyFollowed = EventStore.widgetOnlyFollowedFlow(applicationContext).first()
+                val today = LocalDate.now()
+                val onlyFollowedEverywhere = EventsWidgetKind.entries.all { kind ->
+                    EventStore.widgetOnlyFollowedFlow(applicationContext, kind).first()
+                }
                 val cachedSnapshot = EventStore.cachedEventsFlow(applicationContext).first()
                 val minimumExpectedCount = FetchSafety.minimumExpectedCountForFullDataset(cachedSnapshot.size)
-                val fresh: List<BcEvent> = if (onlyFollowed) {
+                val fresh: List<BcEvent> = if (onlyFollowedEverywhere) {
                     val subscribed = EventStore.subscribedIdsFlow(applicationContext).first()
                     if (subscribed.isEmpty()) {
                         Timber.d("Widget refresh: solo seguiti attivo ma nessun evento seguito, skip rete")
@@ -51,14 +55,14 @@ class WidgetRefreshWorker(
                             repo.fetch(
                                 all = true,
                                 minimumExpectedCount = minimumExpectedCount,
-                                enrichPredicate = { false }
+                                enrichPredicate = { ev -> ev.shouldEnrichRegistrationWindow(today) }
                             )
                         } else if (canUseRegionFilters) {
                             try {
                                 repo.fetchByFilters(
                                     filters = regionFilters,
                                     all = true,
-                                    enrichPredicate = { false }
+                                    enrichPredicate = { ev -> ev.shouldEnrichRegistrationWindow(today) }
                                 )
                             } catch (ce: CancellationException) {
                                 throw ce
@@ -67,7 +71,7 @@ class WidgetRefreshWorker(
                                 repo.fetch(
                                     all = true,
                                     minimumExpectedCount = minimumExpectedCount,
-                                    enrichPredicate = { false }
+                                    enrichPredicate = { ev -> ev.shouldEnrichRegistrationWindow(today) }
                                 )
                             }
                         } else {
@@ -78,7 +82,7 @@ class WidgetRefreshWorker(
                             repo.fetch(
                                 all = true,
                                 minimumExpectedCount = minimumExpectedCount,
-                                enrichPredicate = { false }
+                                enrichPredicate = { ev -> ev.shouldEnrichRegistrationWindow(today) }
                             )
                         }
                     }
@@ -86,13 +90,14 @@ class WidgetRefreshWorker(
                     repo.fetch(
                         all = true,
                         minimumExpectedCount = minimumExpectedCount,
-                        enrichPredicate = { false }
+                        enrichPredicate = { ev -> ev.shouldEnrichRegistrationWindow(today) }
                     )
                 }
 
                 EventStore.upsertEvents(applicationContext, fresh)
-                EventStore.purgeClosed(applicationContext, LocalDate.now())
+                EventStore.purgeClosed(applicationContext, today)
                 UpcomingOpeningsWidget().updateAll(applicationContext)
+                EventsByDateWidget().updateAll(applicationContext)
             }
             Result.success()
         } catch (ce: CancellationException) {
@@ -100,6 +105,7 @@ class WidgetRefreshWorker(
         } catch (e: Exception) {
             Timber.w(e, "Widget refresh failed, retrying with cached data")
             runCatching { UpcomingOpeningsWidget().updateAll(applicationContext) }
+            runCatching { EventsByDateWidget().updateAll(applicationContext) }
             Result.retry()
         }
     }

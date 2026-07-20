@@ -2,6 +2,9 @@ package it.buonacaccia.app.data
 
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.withContext
 import okhttp3.HttpUrl.Companion.toHttpUrl
 import okhttp3.OkHttpClient
@@ -9,6 +12,7 @@ import okhttp3.Request
 import timber.log.Timber
 import java.io.IOException
 import java.security.MessageDigest
+import java.time.LocalDate
 
 class EventsRepository(
     private val client: OkHttpClient
@@ -131,6 +135,7 @@ class EventsRepository(
         }
 
         return@withContext merged.values
+            .filter { it.isStillRelevant() }
             .sortedWith(compareBy<BcEvent> { it.startDate }.thenBy { it.title.lowercase() })
     }
 
@@ -140,6 +145,7 @@ class EventsRepository(
         queryParams: Map<String, String>,
         enrichPredicate: (BcEvent) -> Boolean,
     ): List<BcEvent> {
+        val today = LocalDate.now()
         val url = buildUrl(base, all, queryParams)
         Timber.d("EventsRepository.fetch url=%s", url)
 
@@ -204,23 +210,29 @@ class EventsRepository(
                 )
             }
 
-            return baseEvents.map { ev ->
-                if (!enrichPredicate(ev)) return@map ev
+            val enriched = coroutineScope {
+                baseEvents.map { ev ->
+                    async {
+                        if (!enrichPredicate(ev)) return@async ev
 
-                try {
-                    val detailHtml = fetchDetail(ev.detailUrl)
-                    val subs = HtmlParser.parseSubscriptions(detailHtml)
-                    ev.copy(
-                        subsOpenDate = subs.opening,
-                        subsCloseDate = subs.closing
-                    )
-                } catch (ce: CancellationException) {
-                    throw ce
-                } catch (e: Exception) {
-                    Timber.w(e, "Unable to enrich event id=%s url=%s", ev.id, ev.detailUrl)
-                    ev
-                }
+                        try {
+                            val detailHtml = fetchDetail(ev.detailUrl)
+                            val subs = HtmlParser.parseSubscriptions(detailHtml)
+                            ev.copy(
+                                subsOpenDate = subs.opening,
+                                subsCloseDate = subs.closing,
+                                zone = subs.zone
+                            )
+                        } catch (ce: CancellationException) {
+                            throw ce
+                        } catch (e: Exception) {
+                            Timber.w(e, "Unable to enrich event id=%s url=%s", ev.id, ev.detailUrl)
+                            ev
+                        }
+                    }
+                }.awaitAll()
             }
+            return enriched.filter { it.isStillRelevant(today) }
         }
     }
 

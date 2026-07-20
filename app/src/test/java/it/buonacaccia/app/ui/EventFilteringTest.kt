@@ -40,6 +40,16 @@ class EventFilteringTest {
         assertEquals(listOf("Route nazionale", "Formazione capi"), result.map { it.title })
     }
 
+    @Test
+    fun filter_matchesInferredZone() {
+        val zonedEvent = events.first().copy(zone = "Milano")
+
+        assertEquals(
+            listOf(zonedEvent),
+            EventFiltering.filter(listOf(zonedEvent), EventsUiState(zone = "milano")),
+        )
+    }
+
     private fun event(
         region: String?,
         title: String,
