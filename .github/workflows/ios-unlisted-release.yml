@@ -318,7 +318,14 @@ jobs:
             build/ios/archive.log
             build/ios/export.log
             build/ios/export-options.plist
-            build/ios/app-store-connect-upload.log
+
+      - name: Upload App Store Connect log
+        if: ${{ inputs.upload_to_app_store_connect }}
+        uses: actions/upload-artifact@v6
+        with:
+          name: ios-unlisted-upload-log
+          if-no-files-found: error
+          path: build/ios/app-store-connect-upload.log
 
       - name: Publish release summary
         shell: bash

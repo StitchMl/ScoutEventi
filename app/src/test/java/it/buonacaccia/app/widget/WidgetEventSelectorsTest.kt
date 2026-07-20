@@ -45,7 +45,7 @@ class WidgetEventSelectorsTest {
     }
 
     @Test
-    fun eventsByDate_dropsStartedAndClosedEventsAndKeepsUndatedEventsLast() {
+    fun eventsByDate_keepsActiveAndClosedRegistrationEventsAndPutsUndatedLast() {
         val pastWithoutEnd = event(
             id = "past-no-end",
             title = "Evento passato",
@@ -88,7 +88,10 @@ class WidgetEventSelectorsTest {
             subscribedKeys = emptySet()
         )
 
-        assertEquals(listOf("end-only", "dated", "undated"), selected.map { it.id })
+        assertEquals(
+            listOf("already-started", "future-closed", "end-only", "dated", "undated"),
+            selected.map { it.id },
+        )
         assertEquals(LocalDate.parse("2026-04-30"), badgeDateFor(EventsWidgetKind.EVENTS_BY_DATE, endOnly))
     }
 

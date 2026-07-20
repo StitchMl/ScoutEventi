@@ -434,7 +434,9 @@ async function main() {
     throw new Error("Timed out while waiting for the workflow to complete.");
   }
 
-  const artifactName = `ios-ipa-${options.exportMethod}`;
+  const artifactName = options.workflow === "ios-unlisted-release.yml"
+    ? "ios-unlisted-release"
+    : `ios-ipa-${options.exportMethod}`;
   const artifactsResponse = await requestJson(
     "GET",
     apiUrl(`/repos/${options.owner}/${options.repo}/actions/runs/${runId}/artifacts`),

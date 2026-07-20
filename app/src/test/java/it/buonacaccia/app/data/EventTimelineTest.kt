@@ -20,13 +20,13 @@ class EventTimelineTest {
     }
 
     @Test
-    fun isCurrentOrUpcoming_rejectsEventsWhoseStartDateIsAlreadyPast() {
+    fun isCurrentOrUpcoming_keepsEventsThatAreStillInProgress() {
         val event = event(
             startDate = LocalDate.parse("2026-04-08"),
             endDate = LocalDate.parse("2026-04-10")
         )
 
-        assertFalse(event.isCurrentOrUpcoming(today))
+        assertTrue(event.isCurrentOrUpcoming(today))
     }
 
     @Test
@@ -45,14 +45,14 @@ class EventTimelineTest {
     }
 
     @Test
-    fun isStillRelevant_rejectsFutureEventsWithClosedRegistrations() {
+    fun isStillRelevant_keepsFutureEventsWithClosedRegistrations() {
         val event = event(
             startDate = LocalDate.parse("2026-04-20"),
             endDate = LocalDate.parse("2026-04-22"),
             subsCloseDate = LocalDate.parse("2026-04-08")
         )
 
-        assertFalse(event.isStillRelevant(today))
+        assertTrue(event.isStillRelevant(today))
     }
 
     @Test
