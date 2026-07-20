@@ -15,8 +15,6 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import kotlin.coroutines.cancellation.CancellationException
 
-enum class UnitFilter { TUTTE, BRANCO, REPARTO, CLAN, CAPI }
-
 data class EventsUiState(
     val loading: Boolean = false,
     val items: List<BcEvent> = emptyList(),
@@ -26,13 +24,6 @@ data class EventsUiState(
     val unit: UnitFilter = UnitFilter.TUTTE,
     val onlyOpen: Boolean = false
 )
-
-private val IT_REGIONS = listOf(
-    "Abruzzo", "Basilicata", "Calabria", "Campania", "Emilia-Romagna", "Friuli-Venezia Giulia",
-    "Lazio", "Liguria", "Lombardia", "Marche", "Molise", "Piemonte", "Puglia", "Sardegna",
-    "Sicilia", "Toscana", "Trentino-Alto Adige", "Umbria", "Valle d'Aosta", "Veneto",
-    "Emilia Romagna", "Friuli Venezia Giulia", "Trentino", "Alto Adige", "Val d'Aosta"
-).sortedBy { it.length }.reversed()
 
 class EventsViewModel(
     private val repo: EventsRepository
@@ -138,54 +129,8 @@ class EventsViewModel(
             UnitFilter.CAPI -> Branch.CAPI
         }
 
-    private fun guessRegion(ev: BcEvent): String? {
-        ev.region?.trim()?.takeIf { it.isNotEmpty() }?.let { return it }
-        val hay = listOfNotNull(ev.location, ev.title).joinToString(" ").lowercase()
-        return IT_REGIONS.firstOrNull { r -> hay.contains(r.lowercase()) }
-    }
-
-    val regions: List<String> get() {
-        val present = state.items.mapNotNull { guessRegion(it) }
-            .toSortedSet(String.CASE_INSENSITIVE_ORDER)
-        return listOf("Tutte") + present.toList()
-    }
+    val regions: List<String> get() = EventFiltering.availableRegions(state.items)
 
     val filtered: List<BcEvent>
-        get() {
-            val q = state.query.trim().lowercase()
-            return state.items
-                .asSequence()
-                .filter { ev ->
-                    if (q.isBlank()) {
-                        true
-                    } else {
-                        ev.title.lowercase().contains(q) ||
-                            (ev.region?.lowercase()?.contains(q) == true) ||
-                            (ev.type?.lowercase()?.contains(q) == true) ||
-                            (ev.location?.lowercase()?.contains(q) == true)
-                    }
-                }
-                .filter { ev ->
-                    state.region == null ||
-                        state.region == "Tutte" ||
-                        guessRegion(ev)?.equals(state.region, ignoreCase = true) == true
-                }
-                .filter { ev ->
-                    when (state.unit) {
-                        UnitFilter.TUTTE -> true
-                        UnitFilter.BRANCO -> ev.branch == Branch.LC
-                        UnitFilter.REPARTO -> ev.branch == Branch.EG
-                        UnitFilter.CLAN -> ev.branch == Branch.RS
-                        UnitFilter.CAPI -> ev.branch == Branch.CAPI
-                    }
-                }
-                .filter { ev ->
-                    if (state.onlyOpen) {
-                        ev.statusColor == "green" || ev.statusColor == "yellow"
-                    } else {
-                        true
-                    }
-                }
-                .toList()
-        }
+        get() = EventFiltering.filter(state.items, state)
 }
