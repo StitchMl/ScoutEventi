@@ -20,6 +20,7 @@ data class NotificationPreferences(
 object NotificationRuleEngine {
     fun shouldNotify(event: BcEvent, preferences: NotificationPreferences): Boolean {
         val normalizedType = normalize(event.type)
+        val eventTypeKeys = setOfNotNull(normalizedType, normalize(event.category().label))
         val normalizedRegion = normalize(event.region)
         val normalizedZone = normalize(event.guessZone())
         val normalizedMutedTypes = preferences.mutedTypes.mapNotNull(::normalize).toSet()
@@ -27,15 +28,14 @@ object NotificationRuleEngine {
         val rulesByType = preferences.typeRegionRules.associateBy { normalize(it.type) }
 
         if (normalizedMutedTypes.isNotEmpty()) {
-            val typeAllowed = normalizedType == null || normalizedType !in normalizedMutedTypes
+            val typeAllowed = eventTypeKeys.none { it in normalizedMutedTypes }
             return typeAllowed &&
                 regionMatches(normalizedRegion, preferences.defaultRegions) &&
                 zoneMatches(normalizedZone, preferences.defaultZones)
         }
 
         if (normalizedAllowedTypes.isNotEmpty()) {
-            val typeKey = normalizedType ?: return false
-            if (typeKey !in normalizedAllowedTypes) return false
+            val typeKey = eventTypeKeys.firstOrNull { it in normalizedAllowedTypes } ?: return false
             val explicitRule = rulesByType[typeKey]
             val effectiveRegions = explicitRule?.regions ?: preferences.defaultRegions
             return regionMatches(normalizedRegion, effectiveRegions) &&

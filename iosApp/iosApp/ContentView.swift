@@ -4,6 +4,7 @@ import UIKit
 
 private struct BcEvent: Identifiable, Codable, Hashable {
     let id: String
+    let type: String?
     let title: String
     let region: String?
     let startDateIso: String?
@@ -50,6 +51,33 @@ private struct BcEvent: Identifiable, Codable, Hashable {
         formatter.dateFormat = "dd/MM/yyyy"
         return formatter
     }()
+}
+
+private enum UnitFilter: String, CaseIterable, Identifiable {
+    case all = "Tutte"
+    case explorersGuides = "E/G"
+    case cubsLadybirds = "L/C"
+    case roversScouts = "R/S"
+    case leaders = "Capi"
+
+    var id: String { rawValue }
+
+    func matches(_ event: BcEvent) -> Bool {
+        guard self != .all else { return true }
+        let value = [event.type, event.title].compactMap { $0 }.joined(separator: " ")
+        switch self {
+        case .explorersGuides:
+            return value.range(of: #"(?i)(?<![\p{L}\p{N}])E/G(?![\p{L}\p{N}])"#, options: .regularExpression) != nil
+        case .cubsLadybirds:
+            return value.range(of: #"(?i)(?<![\p{L}\p{N}])L/C(?![\p{L}\p{N}])"#, options: .regularExpression) != nil
+        case .roversScouts:
+            return value.range(of: #"(?i)(?<![\p{L}\p{N}])R/S(?![\p{L}\p{N}])"#, options: .regularExpression) != nil
+        case .leaders:
+            return !UnitFilter.allCases.dropFirst().dropLast().contains { $0.matches(event) }
+        case .all:
+            return true
+        }
+    }
 }
 
 private enum EventCache {
@@ -170,7 +198,13 @@ private actor BuonaCacciaService {
         let (data, response) = try await URLSession.shared.data(for: request)
         guard
             let http = response as? HTTPURLResponse,
-            (200...299).contains(http.statusCode)
+            (200...299).contains(http.statusCode),
+            data.count <= 5 * 1024 * 1024,
+            let responseUrl = http.url,
+            responseUrl.scheme == "https",
+            ["buonacaccia.agesci.it", "buonacaccia.net"].contains(responseUrl.host?.lowercased() ?? ""),
+            let contentType = http.value(forHTTPHeaderField: "Content-Type")?.lowercased(),
+            contentType.hasPrefix("text/html") || contentType.hasPrefix("application/xhtml+xml")
         else {
             throw URLError(.badServerResponse)
         }
@@ -217,6 +251,7 @@ private actor BuonaCacciaService {
             let key = extractEventId(from: detailUrl) ?? detailUrl
             let event = BcEvent(
                 id: key,
+                type: extractType(from: contextHtml),
                 title: title,
                 region: RegionCatalog.firstCanonicalName(in: contextText),
                 startDateIso: startDateIso,
@@ -234,6 +269,15 @@ private actor BuonaCacciaService {
             }
             return $0.sortKey < $1.sortKey
         }
+    }
+
+    private func extractType(from html: String) -> String? {
+        let pattern = #"(?is)<span\b[^>]*id=[\"'][^\"']*EventsGridView_Type_[^\"']*[\"'][^>]*>(.*?)</span>"#
+        guard let regex = try? NSRegularExpression(pattern: pattern) else { return nil }
+        let range = NSRange(location: 0, length: (html as NSString).length)
+        guard let match = regex.firstMatch(in: html, range: range),
+              let valueRange = Range(match.range(at: 1), in: html) else { return nil }
+        return cleanHtml(String(html[valueRange]))
     }
 
     private func contextualHtml(for range: NSRange, in html: String) -> String {
@@ -369,6 +413,8 @@ private final class EventsViewModel: ObservableObject {
     @Published var events: [BcEvent]
     @Published var query = ""
     @Published var selectedRegion = "Tutte"
+    @Published var selectedType = "Tutti"
+    @Published var selectedUnit: UnitFilter = .all
     @Published var isLoading = false
     @Published var errorMessage: String?
 
@@ -392,6 +438,40 @@ private final class EventsViewModel: ObservableObject {
         return ["Tutte"] + regions.sorted()
     }
 
+    var availableTypes: [String] {
+        ["Tutti"] + Set(events.compactMap { $0.type?.trimmingCharacters(in: .whitespacesAndNewlines) })
+            .filter { !$0.isEmpty }
+            .sorted { $0.localizedCaseInsensitiveCompare($1) == .orderedAscending }
+    }
+
+    var acronymHelp: String {
+        let definitions = [
+            ("L/C", "Lupetti e Coccinelle"), ("E/G", "Esploratori e Guide"),
+            ("R/S", "Rover e Scolte"), ("CFT", "Campo di Formazione Tirocinanti"),
+            ("CFM", "Campo di Formazione Metodologica"),
+            ("CFA", "Campo di Formazione Associativa"), ("CCG", "Campo per Capi Gruppo"),
+            ("MF", "Modulo Formativo"), ("MAM", "Modulo di Aggiornamento Metodologico"),
+            ("AM", "Aggiornamento Metodologico"), ("PT", "Percorso di Tirocinio"),
+            ("INTER", "Interbranca"), ("AA", "Approfondimento Associativo"),
+            ("FS", "Fede e Spiritualità"), ("CG", "Capi Gruppo"),
+            ("QA", "Quadri Associativi"), ("TE", "Tematiche Educative"),
+            ("RTT", "Regional Training Team"), ("PO", "Piccole Orme"),
+            ("FA", "sigla usata dall’organizzatore; espansione non pubblicata su BuonaCaccia"),
+            ("EMI", "sigla territoriale usata nei titoli; espansione non pubblicata su BuonaCaccia"),
+            ("ROSS", "Route d’Orientamento alla Scelta di Servizio"),
+            ("EPPPI", "Eventi di Progressione Personale a Partecipazione Individuale"),
+            ("PC", "Protezione Civile"), ("Fo.Ca.", "Formazione Capi"),
+            ("Co.Ca.", "Comunità Capi"), ("II.RR.", "Incaricati Regionali")
+        ]
+        let source = events.flatMap { [$0.type, $0.title] }.compactMap { $0 }.joined(separator: " ")
+        let found = definitions.compactMap { acronym, meaning -> String? in
+            let pattern = "(?i)(?<![\\p{L}\\p{N}])\(NSRegularExpression.escapedPattern(for: acronym))(?![\\p{L}\\p{N}])"
+            return source.range(of: pattern, options: .regularExpression) == nil ? nil : "\(acronym): \(meaning)"
+        }
+        let glossary = found.isEmpty ? "Le sigle compaiono dopo il primo aggiornamento." : found.joined(separator: "\n")
+        return glossary + "\n\nWebiComp è l’etichetta usata da BuonaCaccia per eventi online sulle competenze. Filtri e legenda dipendono dagli eventi scaricati."
+    }
+
     var filteredEvents: [BcEvent] {
         events.filter { event in
             let matchesQuery: Bool
@@ -406,7 +486,8 @@ private final class EventsViewModel: ObservableObject {
             }
 
             let matchesRegion = selectedRegion == "Tutte" || event.region == selectedRegion
-            return matchesQuery && matchesRegion
+            let matchesType = selectedType == "Tutti" || event.type?.caseInsensitiveCompare(selectedType) == .orderedSame
+            return matchesQuery && matchesRegion && matchesType && selectedUnit.matches(event)
         }
     }
 
@@ -442,6 +523,7 @@ private final class EventsViewModel: ObservableObject {
     private static let smokeEvents: [BcEvent] = [
         BcEvent(
             id: "smoke-1",
+            type: "WEBICOMP",
             title: "Campo RS di prova",
             region: "Lazio",
             startDateIso: "2026-06-12",
@@ -451,6 +533,7 @@ private final class EventsViewModel: ObservableObject {
         ),
         BcEvent(
             id: "smoke-2",
+            type: "MF-AM E/G",
             title: "Cantiere EG simulator",
             region: "Lombardia",
             startDateIso: "2026-07-03",
@@ -460,6 +543,7 @@ private final class EventsViewModel: ObservableObject {
         ),
         BcEvent(
             id: "smoke-3",
+            type: "MF-PT",
             title: "Evento Capi smoke test",
             region: "Veneto",
             startDateIso: "2026-09-20",
@@ -482,6 +566,11 @@ private struct EventRow: View {
                 Text(event.subtitle)
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
+            }
+            if let type = event.type, !type.isEmpty {
+                Text(type)
+                    .font(.caption)
+                    .foregroundStyle(.tint)
             }
         }
         .padding(.vertical, 4)
@@ -509,6 +598,7 @@ private struct EmptyStateView: View {
 
 struct ContentView: View {
     @StateObject private var viewModel = EventsViewModel()
+    @State private var showingEventTypesInfo = false
 
     var body: some View {
         NavigationStack {
@@ -561,6 +651,28 @@ struct ContentView: View {
                     }
                     .accessibilityIdentifier("region-filter-menu")
                 }
+                ToolbarItem(placement: .topBarLeading) {
+                    Menu {
+                        ForEach(viewModel.availableTypes, id: \.self) { type in
+                            Button(type) {
+                                viewModel.selectedType = type
+                            }
+                        }
+                    } label: {
+                        Label(viewModel.selectedType, systemImage: "tag")
+                    }
+                    .accessibilityIdentifier("type-filter-menu")
+                }
+                ToolbarItem(placement: .topBarLeading) {
+                    Menu {
+                        ForEach(UnitFilter.allCases) { unit in
+                            Button(unit.rawValue) { viewModel.selectedUnit = unit }
+                        }
+                    } label: {
+                        Label(viewModel.selectedUnit.rawValue, systemImage: "person.3")
+                    }
+                    .accessibilityIdentifier("unit-filter-menu")
+                }
                 ToolbarItem(placement: .topBarTrailing) {
                     Button {
                         Task { await viewModel.refresh() }
@@ -574,6 +686,14 @@ struct ContentView: View {
                     .disabled(viewModel.isLoading)
                     .accessibilityIdentifier("refresh-button")
                 }
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button {
+                        showingEventTypesInfo = true
+                    } label: {
+                        Image(systemName: "info.circle")
+                    }
+                    .accessibilityIdentifier("event-types-info-button")
+                }
             }
             .searchable(
                 text: $viewModel.query,
@@ -585,6 +705,11 @@ struct ContentView: View {
             }
             .task {
                 await viewModel.loadIfNeeded()
+            }
+            .alert("Sigle degli eventi", isPresented: $showingEventTypesInfo) {
+                Button("OK", role: .cancel) {}
+            } message: {
+                Text(viewModel.acronymHelp)
             }
         }
     }

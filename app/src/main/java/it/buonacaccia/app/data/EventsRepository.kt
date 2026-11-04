@@ -9,6 +9,7 @@ import kotlinx.coroutines.withContext
 import okhttp3.HttpUrl.Companion.toHttpUrl
 import okhttp3.OkHttpClient
 import okhttp3.Request
+import okio.Buffer
 import timber.log.Timber
 import java.io.IOException
 import java.security.MessageDigest
@@ -17,6 +18,7 @@ import java.time.LocalDate
 class EventsRepository(
     private val client: OkHttpClient
 ) {
+    private val trustedHosts = setOf("buonacaccia.agesci.it", "buonacaccia.net")
     private val bases = listOf(
         "https://buonacaccia.agesci.it/Events.aspx",
         "https://buonacaccia.net/Events.aspx",
@@ -28,11 +30,7 @@ class EventsRepository(
         minimumExpectedCount: Int? = null,
         enrichPredicate: (BcEvent) -> Boolean = { false },
     ): List<BcEvent> = withContext(Dispatchers.IO) {
-        val shardFilters = BuonaCacciaScopes.fallbackFiltersForQueryParams(queryParams)
-            ?.takeIf { it.isNotEmpty() }
-            ?.takeUnless { filters ->
-                filters.size == 1 && filters.single().toQueryParams() == queryParams
-            }
+        val shardFilters = fallbackFilters(queryParams)
 
         try {
             val directEvents = fetchDirect(
@@ -40,10 +38,7 @@ class EventsRepository(
                 queryParams = queryParams,
                 enrichPredicate = enrichPredicate
             )
-            if (minimumExpectedCount != null &&
-                directEvents.size < minimumExpectedCount &&
-                shardFilters != null
-            ) {
+            if (needsShardValidation(directEvents.size, minimumExpectedCount, shardFilters)) {
                 Timber.w(
                     "Direct fetch returned %d events for params=%s below expected minimum=%d, validating with shard fallback",
                     directEvents.size,
@@ -51,7 +46,7 @@ class EventsRepository(
                     minimumExpectedCount
                 )
                 return@withContext fetchByFilters(
-                    filters = shardFilters,
+                    filters = requireNotNull(shardFilters),
                     all = all,
                     requireAllSuccess = true,
                     enrichPredicate = enrichPredicate
@@ -62,29 +57,9 @@ class EventsRepository(
         } catch (ce: CancellationException) {
             throw ce
         } catch (directError: Throwable) {
-            if (shardFilters != null) {
-                Timber.w(
-                    directError,
-                    "Direct fetch failed params=%s, retrying with shard fallback (%d filters)",
-                    queryParams,
-                    shardFilters.size
-                )
-                try {
-                    return@withContext fetchByFilters(
-                        filters = shardFilters,
-                        all = all,
-                        requireAllSuccess = true,
-                        enrichPredicate = enrichPredicate
-                    )
-                } catch (fallbackError: Throwable) {
-                    if (fallbackError !is CancellationException) {
-                        fallbackError.addSuppressed(directError)
-                    }
-                    throw fallbackError
-                }
-            }
-
-            throw directError
+            return@withContext fetchFallbackOrThrow(
+                shardFilters, directError, queryParams, all, enrichPredicate,
+            )
         }
     }
 
@@ -149,11 +124,13 @@ class EventsRepository(
         val url = buildUrl(base, all, queryParams)
         Timber.d("EventsRepository.fetch url=%s", url)
 
+        requireTrustedUrl(url)
         val req = Request.Builder().url(url).get().build()
         client.newCall(req).execute().use { resp ->
             val finalUrl = resp.request.url.toString()
             val ct = resp.header("Content-Type") ?: "?"
-            val body = resp.body.string()
+            requireTrustedUrl(resp.request.url)
+            val body = resp.readHtmlBody()
             val hash = body.sha256()
 
             Timber.d(
@@ -161,18 +138,7 @@ class EventsRepository(
                 finalUrl, resp.code, ct, body.length, hash.take(12)
             )
 
-            if (!resp.isSuccessful) {
-                throw IOException("HTTP ${resp.code} fetching $finalUrl ct=$ct")
-            }
-            if (body.isBlank()) {
-                throw IOException("Empty body fetching $finalUrl ct=$ct")
-            }
-
-            if (body.contains("Account/Login.aspx", ignoreCase = true) ||
-                body.contains("Accesso", ignoreCase = true)
-            ) {
-                throw IOException("Got login page fetching $finalUrl ct=$ct sha256=${hash.take(12)}")
-            }
+            validateResponse(resp.isSuccessful, resp.code, body, finalUrl, ct, hash)
 
             val inspection = HtmlParser.inspectEventsPage(body, finalUrl)
             val baseEvents = HtmlParser.parseEvents(body, finalUrl)
@@ -186,53 +152,101 @@ class EventsRepository(
                 baseEvents.size
             )
 
-            if (baseEvents.isEmpty()) {
-                if (inspection.uniqueEventLinkCount >= 3) {
-                    throw IllegalStateException(
-                        "Detected ${inspection.uniqueEventLinkCount} event links but parsed 0 events from $finalUrl"
-                    )
-                }
-
-                if (!inspection.recognizableTable) {
-                    val head = body.take(400).replace("\n", " ").replace("\r", " ")
-                    throw IllegalStateException(
-                        "Parsed 0 events from $finalUrl ct=$ct sha256=${hash.take(12)} head=$head"
-                    )
-                }
-
-                Timber.i("Parsed 0 upcoming events from %s", finalUrl)
-                return emptyList()
-            }
-
-            if (looksSuspiciouslyIncomplete(baseEvents.size, inspection)) {
-                throw IllegalStateException(
-                    "Suspiciously incomplete parse from $finalUrl: parsed=${baseEvents.size} links=${inspection.uniqueEventLinkCount} rows=${inspection.candidateRowCount}"
-                )
-            }
-
-            val enriched = coroutineScope {
-                baseEvents.map { ev ->
-                    async {
-                        if (!enrichPredicate(ev)) return@async ev
-
-                        try {
-                            val detailHtml = fetchDetail(ev.detailUrl)
-                            val subs = HtmlParser.parseSubscriptions(detailHtml)
-                            ev.copy(
-                                subsOpenDate = subs.opening,
-                                subsCloseDate = subs.closing,
-                                zone = subs.zone
-                            )
-                        } catch (ce: CancellationException) {
-                            throw ce
-                        } catch (e: Exception) {
-                            Timber.w(e, "Unable to enrich event id=%s url=%s", ev.id, ev.detailUrl)
-                            ev
-                        }
-                    }
-                }.awaitAll()
-            }
+            validateParsedEvents(baseEvents, inspection, body, finalUrl, ct, hash)
+            if (baseEvents.isEmpty()) return emptyList()
+            val enriched = enrichEvents(baseEvents, enrichPredicate)
             return enriched.filter { it.isStillRelevant(today) }
+        }
+    }
+
+    private fun fallbackFilters(queryParams: Map<String, String>): List<BuonaCacciaFilter>? =
+        BuonaCacciaScopes.fallbackFiltersForQueryParams(queryParams)
+            ?.takeIf { it.isNotEmpty() }
+            ?.takeUnless { it.size == 1 && it.single().toQueryParams() == queryParams }
+
+    private fun needsShardValidation(
+        count: Int,
+        minimum: Int?,
+        filters: List<BuonaCacciaFilter>?,
+    ): Boolean = minimum != null && count < minimum && filters != null
+
+    private suspend fun fetchFallbackOrThrow(
+        filters: List<BuonaCacciaFilter>?,
+        directError: Throwable,
+        queryParams: Map<String, String>,
+        all: Boolean,
+        enrichPredicate: (BcEvent) -> Boolean,
+    ): List<BcEvent> {
+        if (filters == null) throw directError
+        Timber.w(directError, "Direct fetch failed params=%s, retrying with shard fallback (%d filters)", queryParams, filters.size)
+        return try {
+            fetchByFilters(filters, all, requireAllSuccess = true, enrichPredicate)
+        } catch (fallbackError: Throwable) {
+            if (fallbackError !is CancellationException) fallbackError.addSuppressed(directError)
+            throw fallbackError
+        }
+    }
+
+    private fun validateResponse(
+        successful: Boolean,
+        code: Int,
+        body: String,
+        finalUrl: String,
+        contentType: String,
+        hash: String,
+    ) {
+        if (!successful) throw IOException("HTTP $code fetching $finalUrl ct=$contentType")
+        if (body.isBlank()) throw IOException("Empty body fetching $finalUrl ct=$contentType")
+        if (body.contains("Account/Login.aspx", true) || body.contains("Accesso", true)) {
+            throw IOException("Got login page fetching $finalUrl ct=$contentType sha256=${hash.take(12)}")
+        }
+    }
+
+    private fun validateParsedEvents(
+        events: List<BcEvent>,
+        inspection: HtmlParser.EventsPageInspection,
+        body: String,
+        finalUrl: String,
+        contentType: String,
+        hash: String,
+    ) {
+        if (events.isNotEmpty()) {
+            check(!looksSuspiciouslyIncomplete(events.size, inspection)) {
+                "Suspiciously incomplete parse from $finalUrl: parsed=${events.size} links=${inspection.uniqueEventLinkCount} rows=${inspection.candidateRowCount}"
+            }
+            return
+        }
+        check(inspection.uniqueEventLinkCount < 3) {
+            "Detected ${inspection.uniqueEventLinkCount} event links but parsed 0 events from $finalUrl"
+        }
+        if (!inspection.recognizableTable) {
+            val head = body.take(400).replace("\n", " ").replace("\r", " ")
+            error("Parsed 0 events from $finalUrl ct=$contentType sha256=${hash.take(12)} head=$head")
+        }
+        Timber.i("Parsed 0 upcoming events from %s", finalUrl)
+    }
+
+    private suspend fun enrichEvents(
+        events: List<BcEvent>,
+        predicate: (BcEvent) -> Boolean,
+    ): List<BcEvent> = coroutineScope {
+        events.map { event -> async { enrichEvent(event, predicate) } }.awaitAll()
+    }
+
+    private suspend fun enrichEvent(event: BcEvent, predicate: (BcEvent) -> Boolean): BcEvent {
+        if (!predicate(event)) return event
+        return try {
+            val subscriptions = HtmlParser.parseSubscriptions(fetchDetail(event.detailUrl))
+            event.copy(
+                subsOpenDate = subscriptions.opening,
+                subsCloseDate = subscriptions.closing,
+                zone = subscriptions.zone,
+            )
+        } catch (ce: CancellationException) {
+            throw ce
+        } catch (error: Exception) {
+            Timber.w(error, "Unable to enrich event id=%s url=%s", event.id, event.detailUrl)
+            event
         }
     }
 
@@ -265,11 +279,14 @@ class EventsRepository(
     suspend fun fetchDetail(detailUrl: String): String = withContext(Dispatchers.IO) {
         Timber.d("EventsRepository.fetchDetail url=%s", detailUrl)
 
-        val req = Request.Builder().url(detailUrl).get().build()
+        val trustedUrl = detailUrl.toHttpUrl()
+        requireTrustedUrl(trustedUrl)
+        val req = Request.Builder().url(trustedUrl).get().build()
         client.newCall(req).execute().use { resp ->
             val finalUrl = resp.request.url.toString()
             val ct = resp.header("Content-Type") ?: "?"
-            val text = resp.body.string()
+            requireTrustedUrl(resp.request.url)
+            val text = resp.readHtmlBody()
 
             Timber.d(
                 "EventsRepository.fetchDetail finalUrl=%s resp=%d ct=%s bytes=%d sha256=%s",
@@ -306,5 +323,31 @@ class EventsRepository(
         val md = MessageDigest.getInstance("SHA-256")
         val digest = md.digest(toByteArray())
         return digest.joinToString("") { "%02x".format(it) }
+    }
+
+    private fun requireTrustedUrl(url: okhttp3.HttpUrl) {
+        require(url.isHttps && url.host in trustedHosts) { "Untrusted BuonaCaccia URL" }
+    }
+
+    private fun okhttp3.Response.readHtmlBody(): String {
+        val contentType = body.contentType()
+        require(contentType?.type == "text" && contentType.subtype in HTML_SUBTYPES) {
+            "Unexpected response content type"
+        }
+        val declaredLength = body.contentLength()
+        require(declaredLength < 0 || declaredLength <= MAX_RESPONSE_BYTES) { "Response too large" }
+        val source = body.source()
+        val buffer = Buffer()
+        while (buffer.size <= MAX_RESPONSE_BYTES) {
+            val read = source.read(buffer, minOf(READ_CHUNK_BYTES, MAX_RESPONSE_BYTES + 1 - buffer.size))
+            if (read == -1L) return buffer.readUtf8()
+        }
+        throw IllegalArgumentException("Response too large")
+    }
+
+    private companion object {
+        const val MAX_RESPONSE_BYTES = 5L * 1024L * 1024L
+        const val READ_CHUNK_BYTES = 8L * 1024L
+        val HTML_SUBTYPES = setOf("html", "xhtml+xml")
     }
 }

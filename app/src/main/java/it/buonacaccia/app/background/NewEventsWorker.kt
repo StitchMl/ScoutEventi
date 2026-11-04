@@ -8,6 +8,8 @@ import androidx.core.content.ContextCompat
 import androidx.work.CoroutineWorker
 import androidx.work.WorkerParameters
 import it.buonacaccia.app.data.BuonaCacciaRegions
+import it.buonacaccia.app.data.BuonaCacciaFilter
+import it.buonacaccia.app.data.BcEvent
 import it.buonacaccia.app.data.EventStore
 import it.buonacaccia.app.data.EventsRepository
 import it.buonacaccia.app.data.FetchSafety
@@ -37,9 +39,11 @@ class NewEventsWorker(
         val minimumExpectedCount = FetchSafety.minimumExpectedCountForFullDataset(cachedSnapshot.size)
         val notificationPreferences = EventStore.notificationPreferences(applicationContext)
         val prefilterRegions = NotificationRuleEngine.regionsForFetchPrefilter(notificationPreferences) ?: emptySet()
-        val filtersByRegion = prefilterRegions.associateWith { BuonaCacciaRegions.filterOf(it) }
-        val filters = filtersByRegion.values.filterNotNull()
-        val unmappedRegions = filtersByRegion.filterValues { it == null }.keys
+        val filtersByRegion = prefilterRegions.mapNotNull { region ->
+            BuonaCacciaRegions.filterOf(region)?.let { region to it }
+        }.toMap()
+        val filters = filtersByRegion.values
+        val unmappedRegions = prefilterRegions - filtersByRegion.keys
         val canUseRegionFilters = prefilterRegions.isNotEmpty() && unmappedRegions.isEmpty() && filters.isNotEmpty()
 
         if (prefilterRegions.isNotEmpty() && filters.isEmpty()) {
@@ -51,27 +55,7 @@ class NewEventsWorker(
             )
         }
 
-        val events = if (canUseRegionFilters) {
-            try {
-                repo.fetchByFilters(
-                    filters,
-                    enrichPredicate = { ev -> ev.shouldEnrichRegistrationWindow(today) }
-                )
-            } catch (ce: CancellationException) {
-                throw ce
-            } catch (error: Throwable) {
-                Timber.w(error, "Filtered new-events fetch failed, retrying with full fetch")
-                repo.fetch(
-                    minimumExpectedCount = minimumExpectedCount,
-                    enrichPredicate = { ev -> ev.shouldEnrichRegistrationWindow(today) }
-                )
-            }
-        } else {
-            repo.fetch(
-                minimumExpectedCount = minimumExpectedCount,
-                enrichPredicate = { ev -> ev.shouldEnrichRegistrationWindow(today) }
-            )
-        }
+        val events = fetchEvents(filters, canUseRegionFilters, minimumExpectedCount, today)
         Timber.d("downloaded events=%d filters=%d", events.size, filters.size)
 
         EventStore.upsertEvents(applicationContext, events)
@@ -94,23 +78,7 @@ class NewEventsWorker(
             .filter { event -> NotificationRuleEngine.shouldNotify(event, notificationPreferences) }
 
         Timber.d("toNotify count=%d", fresh.size)
-        fresh.forEach { e ->
-            Timber.i("notify id=%s title=%s", e.id, e.title)
-            try {
-                val canNotify = Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU ||
-                    ContextCompat.checkSelfPermission(
-                        applicationContext,
-                        Manifest.permission.POST_NOTIFICATIONS
-                    ) == PackageManager.PERMISSION_GRANTED
-                if (canNotify) {
-                    notifier.notifyNewEvent(applicationContext, e)
-                } else {
-                    Timber.w("Permission POST_NOTIFICATIONS not granted, skipping notify for %s", e.id)
-                }
-            } catch (se: SecurityException) {
-                Timber.e(se, "SecurityException while notifying %s", e.id)
-            }
-        }
+        fresh.forEach(::notifyEvent)
 
         val newKeys = fresh.map(EventStore::eventKeyOf).toSet()
         if (newKeys.isNotEmpty()) EventStore.addSeenIds(applicationContext, newKeys)
@@ -123,4 +91,42 @@ class NewEventsWorker(
         Timber.e(t, "NewEventsWorker.error")
         Result.retry()
     }
+
+    private suspend fun fetchEvents(
+        filters: Collection<BuonaCacciaFilter>,
+        useFilters: Boolean,
+        minimumExpectedCount: Int?,
+        today: LocalDate,
+    ): List<BcEvent> {
+        val enrich: (BcEvent) -> Boolean = { it.shouldEnrichRegistrationWindow(today) }
+        if (!useFilters) return repo.fetch(minimumExpectedCount = minimumExpectedCount, enrichPredicate = enrich)
+        return try {
+            repo.fetchByFilters(filters, enrichPredicate = enrich)
+        } catch (ce: CancellationException) {
+            throw ce
+        } catch (error: Throwable) {
+            Timber.w(error, "Filtered new-events fetch failed, retrying with full fetch")
+            repo.fetch(minimumExpectedCount = minimumExpectedCount, enrichPredicate = enrich)
+        }
+    }
+
+    private fun notifyEvent(event: BcEvent) {
+        Timber.i("notify id=%s title=%s", event.id, event.title)
+        if (!canPostNotifications()) {
+            Timber.w("Permission POST_NOTIFICATIONS not granted, skipping notify for %s", event.id)
+            return
+        }
+        try {
+            notifier.notifyNewEvent(applicationContext, event)
+        } catch (error: SecurityException) {
+            Timber.e(error, "SecurityException while notifying %s", event.id)
+        }
+    }
+
+    private fun canPostNotifications(): Boolean =
+        Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU ||
+            ContextCompat.checkSelfPermission(
+                applicationContext,
+                Manifest.permission.POST_NOTIFICATIONS,
+            ) == PackageManager.PERMISSION_GRANTED
 }

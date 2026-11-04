@@ -32,7 +32,9 @@ configure<ApplicationExtension> {
         }
         debug {
             isMinifyEnabled = false
-            applicationIdSuffix = ".debug"
+            applicationIdSuffix = providers.gradleProperty("debugApplicationIdSuffix")
+                .orElse(".debug")
+                .get()
             versionNameSuffix = "-debug"
         }
     }
@@ -49,6 +51,11 @@ configure<ApplicationExtension> {
 
     packaging {
         jniLibs { useLegacyPackaging = true }
+    }
+
+    lint {
+        // Kotlin Analysis API crash in this lint detector; compiler opt-in checks remain enabled.
+        disable += setOf("UnsafeOptInUsageError", "UnsafeOptInUsageWarning")
     }
 }
 

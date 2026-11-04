@@ -6,6 +6,13 @@ import it.buonacaccia.app.data.guessZone
 import java.util.Locale
 
 enum class UnitFilter { TUTTE, BRANCO, REPARTO, CLAN, CAPI }
+data class TypeFilter(val type: String?, val label: String) {
+    companion object {
+        val TUTTI = TypeFilter(null, "Tutti")
+
+        fun exact(type: String): TypeFilter = TypeFilter(type.trim(), type.trim())
+    }
+}
 
 internal object EventFiltering {
     private val italianRegions = listOf(
@@ -28,6 +35,7 @@ internal object EventFiltering {
                 matchesRegion(event, state.region) &&
                 matchesZone(event, state.zone) &&
                 matchesUnit(event, state.unit) &&
+                matchesType(event, state.type) &&
                 (!state.onlyOpen || event.statusColor in OPEN_STATUS_COLORS)
         }
     }
@@ -59,6 +67,9 @@ internal object EventFiltering {
         UnitFilter.CLAN -> event.branch == Branch.RS
         UnitFilter.CAPI -> event.branch == Branch.CAPI
     }
+
+    private fun matchesType(event: BcEvent, type: TypeFilter): Boolean =
+        type.type == null || event.type?.trim()?.equals(type.type, ignoreCase = true) == true
 
     private fun String.normalized(): String = trim().lowercase(Locale.ROOT)
 

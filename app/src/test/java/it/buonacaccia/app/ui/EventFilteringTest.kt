@@ -50,6 +50,21 @@ class EventFilteringTest {
         )
     }
 
+    @Test
+    fun filter_distinguishesEveryExactTypeReturnedByTheSite() {
+        val typed = listOf(
+            event("Lazio", "WebiComp sicurezza", Branch.CAPI, "green", "Roma").copy(type = "WebiComp"),
+            event("Lazio", "MF MAM E/G", Branch.CAPI, "green", "Roma").copy(type = "MF-AM E/G"),
+            event("Lazio", "Percorso tirocinio", Branch.CAPI, "green", "Roma").copy(type = "MF-PT"),
+            event("Lazio", "Assemblea", Branch.CAPI, "green", "Roma").copy(type = "ASS")
+        )
+
+        assertEquals(listOf("WebiComp sicurezza"), EventFiltering.filter(typed, EventsUiState(type = TypeFilter.exact("webicomp"))).map { it.title })
+        assertEquals(listOf("MF MAM E/G"), EventFiltering.filter(typed, EventsUiState(type = TypeFilter.exact("MF-AM E/G"))).map { it.title })
+        assertEquals(listOf("Percorso tirocinio"), EventFiltering.filter(typed, EventsUiState(type = TypeFilter.exact("MF-PT"))).map { it.title })
+        assertEquals(listOf("Assemblea"), EventFiltering.filter(typed, EventsUiState(type = TypeFilter.exact("ASS"))).map { it.title })
+    }
+
     private fun event(
         region: String?,
         title: String,

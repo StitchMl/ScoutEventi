@@ -9,6 +9,31 @@ import org.junit.Test
 class NotificationRuleEngineTest {
 
     @Test
+    fun shouldNotify_appliesCategoryFilters() {
+        val mam = event(type = "MF-AM E/G", region = "Lazio").copy(title = "MF MAM E/G")
+        val webiComp = event(type = "WEBICOMP", region = "Lazio")
+
+        assertTrue(
+            NotificationRuleEngine.shouldNotify(
+                mam,
+                NotificationPreferences(allowedTypes = setOf("MAM")),
+            ),
+        )
+        assertFalse(
+            NotificationRuleEngine.shouldNotify(
+                webiComp,
+                NotificationPreferences(allowedTypes = setOf("MAM")),
+            ),
+        )
+        assertFalse(
+            NotificationRuleEngine.shouldNotify(
+                mam,
+                NotificationPreferences(mutedTypes = setOf("MAM")),
+            ),
+        )
+    }
+
+    @Test
     fun shouldNotify_supportsMixedTypeAndRegionFilters() {
         val preferences = NotificationPreferences(
             allowedTypes = setOf("Specialità", "Moduli"),

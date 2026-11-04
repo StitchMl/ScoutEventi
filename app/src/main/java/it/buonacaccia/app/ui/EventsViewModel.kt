@@ -27,6 +27,7 @@ data class EventsUiState(
     val region: String? = null,
     val zone: String? = null,
     val unit: UnitFilter = UnitFilter.TUTTE,
+    val type: TypeFilter = TypeFilter.TUTTI,
     val onlyOpen: Boolean = false
 )
 
@@ -57,69 +58,45 @@ class EventsViewModel(
 
         loadJob = viewModelScope.launch {
             try {
-                val cachedIds = cachedSnapshot.mapNotNull { it.id }.toSet()
-
-                val list = if (scopeFilter != null) {
-                    try {
-                        repo.fetchByFilters(
-                            filters = listOf(scopeFilter),
-                            all = true,
-                            enrichPredicate = { ev -> ev.id !in cachedIds }
-                        )
-                    } catch (ce: CancellationException) {
-                        throw ce
-                    } catch (_: Throwable) {
-                        repo.fetch(
-                            all = true,
-                            minimumExpectedCount = minimumExpectedCount,
-                            enrichPredicate = { ev -> ev.id !in cachedIds }
-                        )
-                    }
-                } else {
-                    repo.fetch(
-                        all = true,
-                        minimumExpectedCount = minimumExpectedCount,
-                        enrichPredicate = { ev -> ev.id !in cachedIds }
-                    )
-                }
-
-                // Merge details from cache for events that were already cached
-                val enrichedList = list.map { ev ->
-                    val cached = cachedSnapshot.firstOrNull { it.id == ev.id }
-                    if (cached != null) {
-                        ev.copy(
-                            zone = cached.zone ?: ev.zone,
-                            subsOpenDate = cached.subsOpenDate ?: ev.subsOpenDate,
-                            subsCloseDate = cached.subsCloseDate ?: ev.subsCloseDate
-                        )
-                    } else {
-                        ev
-                    }
-                }
-
-                // Persist the newly fetched/enriched events into the local cache
-                runCatching {
-                    EventStore.upsertEvents(context, enrichedList)
-                }
-
-                if (generation == loadGeneration) {
-                    state = state.copy(loading = false, items = enrichedList, error = null)
-                }
+                val loaded = loadEvents(scopeFilter, minimumExpectedCount)
+                val enriched = mergeCachedDetails(loaded)
+                runCatching { EventStore.upsertEvents(context, enriched) }
+                updateGeneration(generation) { copy(loading = false, items = enriched, error = null) }
             } catch (_: CancellationException) {
-                if (generation == loadGeneration) {
-                    state = state.copy(loading = false)
-                }
+                updateGeneration(generation) { copy(loading = false) }
             } catch (e: Exception) {
                 val fallback = cachedSnapshot.ifEmpty { state.items }
-                if (generation == loadGeneration) {
-                    state = state.copy(
-                        loading = false,
-                        items = fallback,
-                        error = e.message ?: "Errore di rete"
-                    )
+                updateGeneration(generation) {
+                    copy(loading = false, items = fallback, error = e.message ?: "Errore di rete")
                 }
             }
         }
+    }
+
+    private suspend fun loadEvents(filter: BuonaCacciaFilter?, minimumExpectedCount: Int?): List<BcEvent> {
+        val cachedIds = cachedSnapshot.mapNotNull { it.id }.toSet()
+        val enrich: (BcEvent) -> Boolean = { it.id !in cachedIds }
+        if (filter == null) return repo.fetch(true, minimumExpectedCount = minimumExpectedCount, enrichPredicate = enrich)
+        return try {
+            repo.fetchByFilters(listOf(filter), all = true, enrichPredicate = enrich)
+        } catch (ce: CancellationException) {
+            throw ce
+        } catch (_: Throwable) {
+            repo.fetch(true, minimumExpectedCount = minimumExpectedCount, enrichPredicate = enrich)
+        }
+    }
+
+    private fun mergeCachedDetails(events: List<BcEvent>): List<BcEvent> = events.map { event ->
+        val cached = cachedSnapshot.firstOrNull { it.id == event.id } ?: return@map event
+        event.copy(
+            zone = cached.zone ?: event.zone,
+            subsOpenDate = cached.subsOpenDate ?: event.subsOpenDate,
+            subsCloseDate = cached.subsCloseDate ?: event.subsCloseDate,
+        )
+    }
+
+    private inline fun updateGeneration(generation: Long, update: EventsUiState.() -> EventsUiState) {
+        if (generation == loadGeneration) state = state.update()
     }
 
     fun onQueryChange(q: String) { state = state.copy(query = q) }
@@ -144,6 +121,7 @@ class EventsViewModel(
         }
     }
     fun onOnlyOpenChange(enabled: Boolean) { state = state.copy(onlyOpen = enabled) }
+    fun onTypeChange(type: TypeFilter) { state = state.copy(type = type) }
 
     fun seedFromCache(items: List<BcEvent>) {
         cachedSnapshot = items
@@ -181,6 +159,13 @@ class EventsViewModel(
             .toSortedSet(String.CASE_INSENSITIVE_ORDER)
         return listOf("Tutte") + present.toList()
     }
+
+    val typeFilters: List<TypeFilter>
+        get() = listOf(TypeFilter.TUTTI) + state.items
+            .mapNotNull { it.type?.trim()?.takeIf(String::isNotEmpty) }
+            .distinctBy { it.lowercase() }
+            .sortedWith(String.CASE_INSENSITIVE_ORDER)
+            .map(TypeFilter::exact)
 
     val filtered: List<BcEvent>
         get() = EventFiltering.filter(state.items, state)
