@@ -5,7 +5,6 @@
 
         <trust-anchors>
             <certificates src="system" />
-            <!-- Keep this ONLY if you need it for older devices and if the file actually exists. -->
             <certificates src="@raw/isrg_root_x1" />
         </trust-anchors>
     </domain-config>

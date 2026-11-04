@@ -35,6 +35,19 @@ final class iosAppUITests: XCTestCase {
         XCTAssertFalse(app.staticTexts["Cantiere EG simulator"].exists)
     }
 
+    func testExactTypeAndUnitFilters() throws {
+        let app = launchApp()
+
+        app.buttons["type-filter-menu"].firstMatch.tap()
+        app.buttons["MF-AM E/G"].firstMatch.tap()
+        XCTAssertTrue(app.staticTexts["Cantiere EG simulator"].waitForExistence(timeout: 5))
+        XCTAssertFalse(app.staticTexts["Campo RS di prova"].exists)
+
+        app.buttons["unit-filter-menu"].firstMatch.tap()
+        app.buttons["E/G"].firstMatch.tap()
+        XCTAssertTrue(app.staticTexts["Cantiere EG simulator"].waitForExistence(timeout: 5))
+    }
+
     private func launchApp() -> XCUIApplication {
         let app = XCUIApplication()
         app.launchArguments = ["--scouteventi-smoke-data", "--ui-testing"]

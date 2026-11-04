@@ -100,6 +100,7 @@ import androidx.core.graphics.toColorInt
 import androidx.core.net.toUri
 import it.buonacaccia.app.R
 import it.buonacaccia.app.data.BcEvent
+import it.buonacaccia.app.data.EventAcronymGlossary
 import it.buonacaccia.app.data.EventStore
 import it.buonacaccia.app.data.NotificationTypeRegionRule
 import it.buonacaccia.app.data.guessZone
@@ -203,6 +204,19 @@ class MainActivity : ComponentActivity() {
 }
 
 enum class NotifyMode { ALLOWLIST, DENYLIST }
+
+private fun seedCache(viewModel: EventsViewModel, events: List<BcEvent>) {
+    if (events.isNotEmpty()) viewModel.seedFromCache(events)
+}
+
+private fun applyDeepLink(viewModel: EventsViewModel, title: String?) {
+    title?.takeIf(String::isNotBlank)?.let(viewModel::onQueryChange)
+}
+
+private fun refreshUnlessLoading(viewModel: EventsViewModel, loading: Boolean) {
+    if (!loading) viewModel.refresh()
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun MainScreen(
@@ -241,13 +255,10 @@ private fun MainScreen(
 
     val state = vm.state
     LaunchedEffect(cached) {
-        if (cached.isNotEmpty()) vm.seedFromCache(cached)
+        seedCache(vm, cached)
     }
     LaunchedEffect(deepLinkTitle) {
-        val title = deepLinkTitle?.takeIf { it.isNotBlank() }
-        if (title != null) {
-            vm.onQueryChange(title)
-        }
+        applyDeepLink(vm, deepLinkTitle)
     }
     val pullRefreshState = rememberPullToRefreshState()
 
@@ -258,7 +269,7 @@ private fun MainScreen(
 
     // List of available types (derived from current events)
     val availableTypes = remember(state.items) {
-        state.items.mapNotNull { it.type?.trim() }
+        state.items.mapNotNull { it.type?.trim()?.takeIf(String::isNotEmpty) }
             .toSortedSet(String.CASE_INSENSITIVE_ORDER)
             .toList()
     }
@@ -282,7 +293,7 @@ private fun MainScreen(
                 title = { Text("Buona Caccia") },
                 actions = {
                     IconButton(
-                        onClick = { if (!state.loading) vm.refresh() },
+                        onClick = { refreshUnlessLoading(vm, state.loading) },
                         enabled = !state.loading
                     ) {
                         Icon(Icons.Default.Refresh, contentDescription = "Refresh")
@@ -330,6 +341,9 @@ private fun MainScreen(
                 onZoneChange = { vm.onZoneChange(if (it == "Tutte") null else it) },
                 selectedUnit = state.unit,
                 onUnitChange = vm::onUnitChange,
+                selectedType = state.type,
+                availableTypeFilters = vm.typeFilters,
+                onTypeChange = vm::onTypeChange,
                 onlyOpen = state.onlyOpen,
                 onOnlyOpenChange = vm::onOnlyOpenChange,
                 onlyFollowed = onlyFollowed,
@@ -397,7 +411,8 @@ private fun MainScreen(
         InfoScreen(
             onClose = { showInfo = false },
             themeMode = themeMode,
-            onChangeTheme = onChangeTheme
+            onChangeTheme = onChangeTheme,
+            acronymEntries = EventAcronymGlossary.entriesFor(state.items),
         )
         return
     }
@@ -525,6 +540,9 @@ private fun FiltersRow(
     onZoneChange: (String) -> Unit,
     selectedUnit: UnitFilter,
     onUnitChange: (UnitFilter) -> Unit,
+    selectedType: TypeFilter,
+    availableTypeFilters: List<TypeFilter>,
+    onTypeChange: (TypeFilter) -> Unit,
     onlyOpen: Boolean,
     onOnlyOpenChange: (Boolean) -> Unit,
     onlyFollowed: Boolean,
@@ -606,9 +624,9 @@ private fun FiltersRow(
             var expandedU by remember { mutableStateOf(false) }
             val unitLabel = when (selectedUnit) {
                 UnitFilter.TUTTE -> "Tutte"
-                UnitFilter.BRANCO -> "Branco"
-                UnitFilter.REPARTO -> "Reparto"
-                UnitFilter.CLAN -> "Clan"
+                UnitFilter.BRANCO -> "L/C"
+                UnitFilter.REPARTO -> "E/G"
+                UnitFilter.CLAN -> "R/S"
                 UnitFilter.CAPI -> "Capi"
             }
             ExposedDropdownMenuBox(
@@ -628,9 +646,9 @@ private fun FiltersRow(
                 ExposedDropdownMenu(expanded = expandedU, onDismissRequest = { expandedU = false }) {
                     listOf(
                         UnitFilter.TUTTE to "Tutte",
-                        UnitFilter.BRANCO to "Branco",
-                        UnitFilter.REPARTO to "Reparto",
-                        UnitFilter.CLAN to "Clan",
+                        UnitFilter.REPARTO to "E/G",
+                        UnitFilter.BRANCO to "L/C",
+                        UnitFilter.CLAN to "R/S",
                         UnitFilter.CAPI to "Capi"
                     ).forEach { (value, label) ->
                         DropdownMenuItem(
@@ -641,8 +659,30 @@ private fun FiltersRow(
                 }
             }
 
-            // Empty spacer to balance the row layout
-            Spacer(modifier = Modifier.weight(1f))
+            var expandedT by remember { mutableStateOf(false) }
+            ExposedDropdownMenuBox(
+                expanded = expandedT,
+                onExpandedChange = { expandedT = it },
+                modifier = Modifier.weight(1f)
+            ) {
+                OutlinedTextField(
+                    modifier = Modifier.menuAnchor(ExposedDropdownMenuAnchorType.PrimaryNotEditable).fillMaxWidth(),
+                    value = selectedType.label,
+                    onValueChange = {},
+                    readOnly = true,
+                    singleLine = true,
+                    label = { Text("Tipo") },
+                    trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expandedT) }
+                )
+                ExposedDropdownMenu(expanded = expandedT, onDismissRequest = { expandedT = false }) {
+                    availableTypeFilters.forEach { value ->
+                        DropdownMenuItem(
+                            text = { Text(value.label) },
+                            onClick = { onTypeChange(value); expandedT = false }
+                        )
+                    }
+                }
+            }
         }
     }
     Row(
@@ -728,7 +768,8 @@ private fun FilterToggle(
 private fun InfoScreen(
     onClose: () -> Unit,
     themeMode: EventStore.ThemeMode,
-    onChangeTheme: (EventStore.ThemeMode) -> Unit
+    onChangeTheme: (EventStore.ThemeMode) -> Unit,
+    acronymEntries: List<Pair<String, String>>,
 ) {
     Scaffold(
         topBar = {
@@ -768,6 +809,21 @@ private fun InfoScreen(
             LegendRow(colorHex = "#FFEB3B", label = "Attenzione / quasi pieno (giallo)")
             LegendRow(colorHex = "#9C27B0", label = "Lista d’attesa (viola)")
             LegendRow(colorHex = "#F44336", label = "Iscrizioni chiuse (rosso)")
+
+            HorizontalDivider()
+
+            Text("Sigle degli eventi", style = MaterialTheme.typography.titleMedium)
+            acronymEntries.forEach { (acronym, meaning) ->
+                Text("$acronym: $meaning", style = MaterialTheme.typography.bodySmall)
+            }
+            if (acronymEntries.isEmpty()) {
+                Text("Le sigle compaiono dopo il primo aggiornamento.", style = MaterialTheme.typography.bodySmall)
+            }
+            Text(
+                "WebiComp è l’etichetta usata da BuonaCaccia per eventi online sulle competenze. " +
+                    "Filtri e legenda dipendono dagli eventi scaricati.",
+                style = MaterialTheme.typography.bodySmall,
+            )
 
             HorizontalDivider()
 

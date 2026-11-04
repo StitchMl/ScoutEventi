@@ -34,65 +34,7 @@ class WidgetRefreshWorker(
                 }
                 val cachedSnapshot = EventStore.cachedEventsFlow(applicationContext).first()
                 val minimumExpectedCount = FetchSafety.minimumExpectedCountForFullDataset(cachedSnapshot.size)
-                val fresh: List<BcEvent> = if (onlyFollowedEverywhere) {
-                    val subscribed = EventStore.subscribedIdsFlow(applicationContext).first()
-                    if (subscribed.isEmpty()) {
-                        Timber.d("Widget refresh: solo seguiti attivo ma nessun evento seguito, skip rete")
-                        emptyList()
-                    } else {
-                        val subscribedEvents = cachedSnapshot.filter { ev ->
-                            EventStore.eventKeyOf(ev) in subscribed
-                        }
-                        val regionFilters = BuonaCacciaScopes.regionFiltersOf(subscribedEvents.map { it.region })
-                        val unmappedRegions = BuonaCacciaScopes.unmappedRegionsOf(subscribedEvents.map { it.region })
-                        val canUseRegionFilters =
-                            subscribedEvents.isNotEmpty() &&
-                                regionFilters.isNotEmpty() &&
-                                unmappedRegions.isEmpty()
-
-                        if (subscribedEvents.isEmpty()) {
-                            Timber.w("Widget refresh: seguiti non presenti in cache, full fetch")
-                            repo.fetch(
-                                all = true,
-                                minimumExpectedCount = minimumExpectedCount,
-                                enrichPredicate = { ev -> ev.shouldEnrichRegistrationWindow(today) }
-                            )
-                        } else if (canUseRegionFilters) {
-                            try {
-                                repo.fetchByFilters(
-                                    filters = regionFilters,
-                                    all = true,
-                                    enrichPredicate = { ev -> ev.shouldEnrichRegistrationWindow(today) }
-                                )
-                            } catch (ce: CancellationException) {
-                                throw ce
-                            } catch (error: Throwable) {
-                                Timber.w(error, "Widget refresh: filtered fetch failed, full fetch fallback")
-                                repo.fetch(
-                                    all = true,
-                                    minimumExpectedCount = minimumExpectedCount,
-                                    enrichPredicate = { ev -> ev.shouldEnrichRegistrationWindow(today) }
-                                )
-                            }
-                        } else {
-                            Timber.w(
-                                "Widget refresh: regioni seguite non mappabili %s, full fetch",
-                                unmappedRegions
-                            )
-                            repo.fetch(
-                                all = true,
-                                minimumExpectedCount = minimumExpectedCount,
-                                enrichPredicate = { ev -> ev.shouldEnrichRegistrationWindow(today) }
-                            )
-                        }
-                    }
-                } else {
-                    repo.fetch(
-                        all = true,
-                        minimumExpectedCount = minimumExpectedCount,
-                        enrichPredicate = { ev -> ev.shouldEnrichRegistrationWindow(today) }
-                    )
-                }
+                val fresh = refreshEvents(onlyFollowedEverywhere, cachedSnapshot, minimumExpectedCount, today)
 
                 EventStore.upsertEvents(applicationContext, fresh)
                 EventStore.purgeClosed(applicationContext, today)
@@ -109,4 +51,42 @@ class WidgetRefreshWorker(
             Result.retry()
         }
     }
+
+    private suspend fun refreshEvents(
+        onlyFollowed: Boolean,
+        cached: List<BcEvent>,
+        minimumExpectedCount: Int?,
+        today: LocalDate,
+    ): List<BcEvent> {
+        if (!onlyFollowed) return fetchAll(minimumExpectedCount, today)
+        val subscribed = EventStore.subscribedIdsFlow(applicationContext).first()
+        if (subscribed.isEmpty()) {
+            Timber.d("Widget refresh: solo seguiti attivo ma nessun evento seguito, skip rete")
+            return emptyList()
+        }
+        val subscribedEvents = cached.filter { EventStore.eventKeyOf(it) in subscribed }
+        if (subscribedEvents.isEmpty()) {
+            Timber.w("Widget refresh: seguiti non presenti in cache, full fetch")
+            return fetchAll(minimumExpectedCount, today)
+        }
+        val filters = BuonaCacciaScopes.regionFiltersOf(subscribedEvents.map { it.region })
+        val unmapped = BuonaCacciaScopes.unmappedRegionsOf(subscribedEvents.map { it.region })
+        if (filters.isEmpty() || unmapped.isNotEmpty()) {
+            Timber.w("Widget refresh: regioni seguite non mappabili %s, full fetch", unmapped)
+            return fetchAll(minimumExpectedCount, today)
+        }
+        return try {
+            repo.fetchByFilters(filters, all = true) { it.shouldEnrichRegistrationWindow(today) }
+        } catch (ce: CancellationException) {
+            throw ce
+        } catch (error: Throwable) {
+            Timber.w(error, "Widget refresh: filtered fetch failed, full fetch fallback")
+            fetchAll(minimumExpectedCount, today)
+        }
+    }
+
+    private suspend fun fetchAll(minimumExpectedCount: Int?, today: LocalDate): List<BcEvent> =
+        repo.fetch(all = true, minimumExpectedCount = minimumExpectedCount) {
+            it.shouldEnrichRegistrationWindow(today)
+        }
 }

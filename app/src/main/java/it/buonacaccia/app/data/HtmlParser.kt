@@ -11,6 +11,8 @@ import java.util.Locale
 
 object HtmlParser {
 
+    private const val LINK_SELECTOR = "a[href]"
+
     private val dateFormats = listOf(
         DateTimeFormatter.ofPattern("dd/MM/yyyy", Locale.ITALY),
         DateTimeFormatter.ofPattern("d/M/yyyy", Locale.ITALY)
@@ -52,7 +54,7 @@ object HtmlParser {
         val doc = Jsoup.parse(html, baseUrl)
         val table = findEventsTable(doc)
         val uniqueEventLinks = doc
-            .select("a[href]")
+            .select(LINK_SELECTOR)
             .mapNotNull { anchor ->
                 val href = anchor.absUrl("href").ifBlank { anchor.attr("href") }
                 if (href.isBlank() || !isEventLink(href)) return@mapNotNull null
@@ -66,7 +68,7 @@ object HtmlParser {
                     .distinct()
                     .count { row ->
                         row.select("> th").isEmpty() &&
-                            row.select("a[href]").any { isEventLink(it.attr("href")) }
+                            row.select(LINK_SELECTOR).any { isEventLink(it.attr("href")) }
                     }
             } ?: 0
 
@@ -99,11 +101,11 @@ object HtmlParser {
         if (cells.isEmpty()) return null
 
         val titleIndex = cells.indexOfFirst {
-            it.select("a[href]").any { anchor -> isEventLink(anchor.attr("href")) }
+            it.select(LINK_SELECTOR).any { anchor -> isEventLink(anchor.attr("href")) }
         }
         if (titleIndex == -1) return null
 
-        val link = cells[titleIndex].selectFirst("a[href]") ?: return null
+        val link = cells[titleIndex].selectFirst(LINK_SELECTOR) ?: return null
         val title = link.text().trim()
         if (title.isBlank()) return null
 
@@ -134,7 +136,7 @@ object HtmlParser {
     private fun parseFlexibleEvents(doc: Document, today: LocalDate): List<BcEvent> {
         val events = LinkedHashMap<String, BcEvent>()
 
-        doc.select("a[href]").forEach { anchor ->
+        doc.select(LINK_SELECTOR).forEach { anchor ->
             if (!isEventLink(anchor.attr("href"))) return@forEach
 
             val detailUrl = anchor.absUrl("href").ifBlank { return@forEach }
@@ -203,7 +205,7 @@ object HtmlParser {
     }
 
     private fun eventLinkCount(element: Element): Int =
-        element.select("a[href]").count { anchor -> isEventLink(anchor.attr("href")) }
+        element.select(LINK_SELECTOR).count { anchor -> isEventLink(anchor.attr("href")) }
 
     private fun parseDate(raw: String?): LocalDate? {
         val s = raw?.trim()?.takeIf { it.isNotEmpty() } ?: return null

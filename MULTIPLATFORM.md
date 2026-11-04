@@ -155,6 +155,10 @@ The iOS app currently includes:
 - local cache
 - search
 - region filter
+- exact event-type filter populated from downloaded events
+- unit filters: `E/G`, `L/C`, `R/S`, `Capi`
+- acronym help generated from downloaded events
+- HTTPS host, response type, and response size validation
 - link opening to event details
 
 The Android app still remains the more complete build because Android background workers, notifications, and widgets are still Android-specific.

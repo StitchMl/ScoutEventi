@@ -282,6 +282,28 @@ class HtmlParserTest {
         assertEquals("Pesaro", subs.zone)
     }
 
+    @Test
+    fun acronymGlossary_onlyReturnsEntriesFoundInDownloadedEvents() {
+        val event = BcEvent(
+            id = "glossary",
+            type = "CFM E/G",
+            title = "Evento EPPPI",
+            region = "Lazio",
+            startDate = null,
+            endDate = null,
+            fee = null,
+            location = null,
+            enrolled = null,
+            status = null,
+            detailUrl = "https://buonacaccia.agesci.it/Event.aspx?e=1",
+        )
+
+        assertEquals(
+            listOf("E/G", "CFM", "EPPPI"),
+            EventAcronymGlossary.entriesFor(listOf(event)).map { it.first },
+        )
+    }
+
     private fun assertTrue(value: Boolean) {
         assertEquals(true, value)
     }

@@ -66,6 +66,7 @@ private val NotificationPurple = Color(0xFF6A1B9A)
 private val TypeBlue = Color(0xFF0B57D0)
 private val RegionGreen = Color(0xFF2E7D32)
 private val ZoneOrange = Color(0xFF9A4D00)
+private const val ALL_ITALY_LABEL = "Tutta Italia"
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -90,10 +91,10 @@ internal fun NotificationSettingsDialog(
     var page by remember { mutableStateOf(NotificationSettingsPage.OVERVIEW) }
     var query by remember { mutableStateOf("") }
     var mode by remember(interestedTypes, mutedTypes) {
-        mutableStateOf(if (mutedTypes.isNotEmpty()) NotifyMode.DENYLIST else NotifyMode.ALLOWLIST)
+        mutableStateOf(initialMode(mutedTypes))
     }
     var selectedTypes by remember(interestedTypes, mutedTypes) {
-        mutableStateOf(if (mutedTypes.isNotEmpty()) mutedTypes else interestedTypes)
+        mutableStateOf(initialTypes(interestedTypes, mutedTypes))
     }
     var selectedRegions by remember(interestedRegions) { mutableStateOf(interestedRegions) }
     var selectedZones by remember(interestedZones) { mutableStateOf(interestedZones) }
@@ -103,14 +104,7 @@ internal fun NotificationSettingsDialog(
     var activeType by remember { mutableStateOf<String?>(null) }
 
     val regions = remember(availableRegions) { availableRegions.filterNot { it == "Tutte" } }
-    val pageTitle = when (page) {
-        NotificationSettingsPage.OVERVIEW -> "Impostazioni notifiche"
-        NotificationSettingsPage.TYPES -> "Tipi di evento"
-        NotificationSettingsPage.REGIONS -> "Regioni predefinite"
-        NotificationSettingsPage.ZONES -> "Zone"
-        NotificationSettingsPage.TYPE_RULES -> "Regioni per tipo"
-        NotificationSettingsPage.TYPE_RULE_DETAIL -> activeType.orEmpty()
-    }
+    val pageTitle = pageTitle(page, activeType)
 
     fun navigate(destination: NotificationSettingsPage) {
         query = ""
@@ -134,11 +128,7 @@ internal fun NotificationSettingsDialog(
                             if (page != NotificationSettingsPage.OVERVIEW) {
                                 IconButton(onClick = {
                                     navigate(
-                                        if (page == NotificationSettingsPage.TYPE_RULE_DETAIL) {
-                                            NotificationSettingsPage.TYPE_RULES
-                                        } else {
-                                            NotificationSettingsPage.OVERVIEW
-                                        },
+                                        backDestination(page),
                                     )
                                 }) {
                                     Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Indietro")
@@ -163,14 +153,7 @@ internal fun NotificationSettingsDialog(
                                             selectedTypes,
                                             selectedRegions,
                                             selectedZones,
-                                            if (mode == NotifyMode.ALLOWLIST) {
-                                                rulesByType.filterKeys { it in selectedTypes }
-                                                    .map { (type, values) ->
-                                                        NotificationTypeRegionRule(type, values)
-                                                    }
-                                            } else {
-                                                emptyList()
-                                            },
+                                            savedRules(mode, rulesByType, selectedTypes),
                                         )
                                     },
                                     modifier = Modifier.weight(1f).height(52.dp),
@@ -246,7 +229,7 @@ internal fun NotificationSettingsDialog(
                             item {
                                 OverviewCard(
                                     title = "Regioni predefinite",
-                                    summary = selectionSummary(selectedRegions, "Tutta Italia"),
+                                    summary = selectionSummary(selectedRegions, ALL_ITALY_LABEL),
                                     icon = Icons.Default.Public,
                                     accent = RegionGreen,
                                     onClick = { navigate(NotificationSettingsPage.REGIONS) },
@@ -374,7 +357,7 @@ internal fun NotificationSettingsDialog(
                                     }
                                 }
                                 item {
-                                    RuleModeRow("Tutta Italia", configured?.isEmpty() == true) {
+                                    RuleModeRow(ALL_ITALY_LABEL, configured?.isEmpty() == true) {
                                         rulesByType = rulesByType + (type to emptySet())
                                     }
                                 }
@@ -538,6 +521,38 @@ private fun typeSummary(mode: NotifyMode, values: Set<String>): String = when {
 
 private fun ruleSummary(regions: Set<String>?): String = when {
     regions == null -> "Eredita regioni predefinite"
-    regions.isEmpty() -> "Tutta Italia"
+    regions.isEmpty() -> ALL_ITALY_LABEL
     else -> selectionSummary(regions, "")
+}
+
+private fun initialMode(mutedTypes: Set<String>): NotifyMode =
+    if (mutedTypes.isEmpty()) NotifyMode.ALLOWLIST else NotifyMode.DENYLIST
+
+private fun initialTypes(interested: Set<String>, muted: Set<String>): Set<String> =
+    muted.ifEmpty { interested }
+
+private fun pageTitle(page: NotificationSettingsPage, activeType: String?): String = when (page) {
+    NotificationSettingsPage.OVERVIEW -> "Impostazioni notifiche"
+    NotificationSettingsPage.TYPES -> "Tipi di evento"
+    NotificationSettingsPage.REGIONS -> "Regioni predefinite"
+    NotificationSettingsPage.ZONES -> "Zone"
+    NotificationSettingsPage.TYPE_RULES -> "Regioni per tipo"
+    NotificationSettingsPage.TYPE_RULE_DETAIL -> activeType.orEmpty()
+}
+
+private fun backDestination(page: NotificationSettingsPage): NotificationSettingsPage =
+    if (page == NotificationSettingsPage.TYPE_RULE_DETAIL) {
+        NotificationSettingsPage.TYPE_RULES
+    } else {
+        NotificationSettingsPage.OVERVIEW
+    }
+
+private fun savedRules(
+    mode: NotifyMode,
+    rules: Map<String, Set<String>>,
+    selectedTypes: Set<String>,
+): List<NotificationTypeRegionRule> {
+    if (mode != NotifyMode.ALLOWLIST) return emptyList()
+    return rules.filterKeys { it in selectedTypes }
+        .map { (type, regions) -> NotificationTypeRegionRule(type, regions) }
 }
