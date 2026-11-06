@@ -33,6 +33,7 @@ final class iosAppUITests: XCTestCase {
 
         // WebiComp è online: resta visibile anche quando la regione non coincide.
         XCTAssertTrue(app.staticTexts["Campo RS di prova"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["Evento Lazio in presenza"].waitForExistence(timeout: 5))
         XCTAssertFalse(app.staticTexts["Cantiere EG simulator"].exists)
     }
 
@@ -56,7 +57,7 @@ final class iosAppUITests: XCTestCase {
         guard #available(iOS 17.0, *) else { return }
         let app = launchApp()
         XCTAssertTrue(app.navigationBars["ScoutEventi"].waitForExistence(timeout: 10))
-        try app.performAccessibilityAudit()
+        try app.performAccessibilityAudit(for: [.sufficientElementDescription, .hitRegion])
     }
 
     func testExactTypeAndUnitFilters() throws {

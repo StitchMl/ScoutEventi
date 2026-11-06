@@ -582,6 +582,16 @@ private final class EventsViewModel: ObservableObject {
             endDateIso: "2026-09-21",
             status: "Chiuso",
             detailUrl: "https://buonacaccia.agesci.it/Event.aspx?E=smoke-3"
+        ),
+        BcEvent(
+            id: "smoke-4",
+            type: "FA",
+            title: "Evento Lazio in presenza",
+            region: "Lazio",
+            startDateIso: "2026-10-10",
+            endDateIso: nil,
+            status: "Aperto",
+            detailUrl: "https://buonacaccia.agesci.it/Event.aspx?E=smoke-4"
         )
     ]
 }
