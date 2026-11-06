@@ -20,8 +20,13 @@ private struct BcEvent: Identifiable, Codable, Hashable {
     }
 
     var formattedRange: String? {
-        guard let startDateIso else { return nil }
-        let start = Self.outputDateFormatter.string(from: Self.isoDateFormatter.date(from: startDateIso) ?? Date())
+        guard
+            let startDateIso,
+            let startDate = Self.isoDateFormatter.date(from: startDateIso)
+        else {
+            return nil
+        }
+        let start = Self.outputDateFormatter.string(from: startDate)
         guard
             let endDateIso,
             endDateIso != startDateIso,
@@ -34,6 +39,13 @@ private struct BcEvent: Identifiable, Codable, Hashable {
 
     var sortKey: String {
         startDateIso ?? "9999-12-31"
+    }
+
+    var isOnline: Bool {
+        [type, title]
+            .compactMap { $0 }
+            .joined(separator: " ")
+            .range(of: #"(?i)(webicomp|webinar|online)"#, options: .regularExpression) != nil
     }
 
     private static let isoDateFormatter: DateFormatter = {
@@ -163,11 +175,11 @@ private actor BuonaCacciaService {
         "https://buonacaccia.net/Events.aspx?All=1"
     ]
 
-    private let linkRegex = try! NSRegularExpression(
+    private let linkRegex = try? NSRegularExpression(
         pattern: #"(?is)<a\b[^>]*href\s*=\s*["']([^"']+)["'][^>]*>(.*?)</a>"#
     )
-    private let tagRegex = try! NSRegularExpression(pattern: #"(?is)<[^>]+>"#)
-    private let dateRegex = try! NSRegularExpression(pattern: #"\b\d{1,2}/\d{1,2}/\d{4}\b"#)
+    private let tagRegex = try? NSRegularExpression(pattern: #"(?is)<[^>]+>"#)
+    private let dateRegex = try? NSRegularExpression(pattern: #"\b\d{1,2}/\d{1,2}/\d{4}\b"#)
 
     func fetchEvents() async throws -> [BcEvent] {
         var lastError: Error?
@@ -220,6 +232,7 @@ private actor BuonaCacciaService {
     }
 
     private func parseEvents(html: String, baseURL: URL) -> [BcEvent] {
+        guard let linkRegex else { return [] }
         let fullRange = NSRange(location: 0, length: (html as NSString).length)
         let todayIso = isoFormatter.string(from: Date())
         var unique = [String: BcEvent]()
@@ -301,6 +314,7 @@ private actor BuonaCacciaService {
     }
 
     private func extractDates(from text: String) -> [String] {
+        guard let dateRegex else { return [] }
         let range = NSRange(location: 0, length: (text as NSString).length)
         return dateRegex.matches(in: text, options: [], range: range)
             .compactMap { match -> String? in
@@ -363,6 +377,7 @@ private actor BuonaCacciaService {
     }
 
     private func cleanHtml(_ html: String) -> String {
+        guard let tagRegex else { return html.trimmingCharacters(in: .whitespacesAndNewlines) }
         let nsHtml = html as NSString
         let range = NSRange(location: 0, length: nsHtml.length)
         let stripped = tagRegex.stringByReplacingMatches(in: html, options: [], range: range, withTemplate: " ")
@@ -474,21 +489,38 @@ private final class EventsViewModel: ObservableObject {
 
     var filteredEvents: [BcEvent] {
         events.filter { event in
+            let normalizedQuery = query
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+                .folding(options: [.diacriticInsensitive, .caseInsensitive], locale: Locale(identifier: "it_IT"))
+                .lowercased()
             let matchesQuery: Bool
-            if query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            if normalizedQuery.isEmpty {
                 matchesQuery = true
             } else {
-                let haystack = [event.title, event.region, event.status]
+                let haystack = [event.title, event.region, event.status, event.type]
                     .compactMap { $0 }
                     .joined(separator: " ")
+                    .folding(options: [.diacriticInsensitive, .caseInsensitive], locale: Locale(identifier: "it_IT"))
                     .lowercased()
-                matchesQuery = haystack.contains(query.lowercased())
+                matchesQuery = haystack.contains(normalizedQuery)
             }
 
-            let matchesRegion = selectedRegion == "Tutte" || event.region == selectedRegion
+            let matchesRegion = selectedRegion == "Tutte" || event.region == selectedRegion || event.isOnline
             let matchesType = selectedType == "Tutti" || event.type?.caseInsensitiveCompare(selectedType) == .orderedSame
             return matchesQuery && matchesRegion && matchesType && selectedUnit.matches(event)
         }
+    }
+
+    var hasActiveFilters: Bool {
+        !query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ||
+            selectedRegion != "Tutte" || selectedType != "Tutti" || selectedUnit != .all
+    }
+
+    func resetFilters() {
+        query = ""
+        selectedRegion = "Tutte"
+        selectedType = "Tutti"
+        selectedUnit = .all
     }
 
     func loadIfNeeded() async {
@@ -525,7 +557,7 @@ private final class EventsViewModel: ObservableObject {
             id: "smoke-1",
             type: "WEBICOMP",
             title: "Campo RS di prova",
-            region: "Lazio",
+            region: "Lombardia",
             startDateIso: "2026-06-12",
             endDateIso: "2026-06-15",
             status: "Aperto",
@@ -580,6 +612,9 @@ private struct EventRow: View {
 }
 
 private struct EmptyStateView: View {
+    let hasActiveFilters: Bool
+    let resetFilters: () -> Void
+
     var body: some View {
         VStack(spacing: 12) {
             Image(systemName: "calendar.badge.exclamationmark")
@@ -590,6 +625,11 @@ private struct EmptyStateView: View {
             Text("Prova a cambiare ricerca o regione.")
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
+            if hasActiveFilters {
+                Button("Azzera filtri", action: resetFilters)
+                    .buttonStyle(.borderedProminent)
+                    .accessibilityIdentifier("reset-filters-button")
+            }
         }
         .multilineTextAlignment(.center)
         .padding(24)
@@ -610,9 +650,16 @@ struct ContentView: View {
                     List {
                         if let errorMessage = viewModel.errorMessage {
                             Section {
-                                Text(errorMessage)
-                                    .font(.footnote)
-                                    .foregroundStyle(.orange)
+                                HStack {
+                                    Text(errorMessage)
+                                        .font(.footnote)
+                                        .foregroundStyle(.secondary)
+                                    Spacer()
+                                    Button("Riprova") {
+                                        Task { await viewModel.refresh() }
+                                    }
+                                    .disabled(viewModel.isLoading)
+                                }
                             }
                         }
 
@@ -631,7 +678,10 @@ struct ContentView: View {
                     .accessibilityIdentifier("events-list")
                     .overlay {
                         if viewModel.filteredEvents.isEmpty && !viewModel.isLoading {
-                            EmptyStateView()
+                            EmptyStateView(
+                                hasActiveFilters: viewModel.hasActiveFilters,
+                                resetFilters: viewModel.resetFilters
+                            )
                         }
                     }
                 }
@@ -650,6 +700,8 @@ struct ContentView: View {
                         Label(viewModel.selectedRegion, systemImage: "line.3.horizontal.decrease.circle")
                     }
                     .accessibilityIdentifier("region-filter-menu")
+                    .accessibilityLabel("Filtra per regione: \(viewModel.selectedRegion)")
+                    .accessibilityHint("Gli eventi online restano visibili per ogni regione")
                 }
                 ToolbarItem(placement: .topBarLeading) {
                     Menu {
@@ -662,6 +714,7 @@ struct ContentView: View {
                         Label(viewModel.selectedType, systemImage: "tag")
                     }
                     .accessibilityIdentifier("type-filter-menu")
+                    .accessibilityLabel("Filtra per tipo: \(viewModel.selectedType)")
                 }
                 ToolbarItem(placement: .topBarLeading) {
                     Menu {
@@ -672,6 +725,7 @@ struct ContentView: View {
                         Label(viewModel.selectedUnit.rawValue, systemImage: "person.3")
                     }
                     .accessibilityIdentifier("unit-filter-menu")
+                    .accessibilityLabel("Filtra per unità: \(viewModel.selectedUnit.rawValue)")
                 }
                 ToolbarItem(placement: .topBarTrailing) {
                     Button {
@@ -685,6 +739,7 @@ struct ContentView: View {
                     }
                     .disabled(viewModel.isLoading)
                     .accessibilityIdentifier("refresh-button")
+                    .accessibilityLabel(viewModel.isLoading ? "Aggiornamento in corso" : "Aggiorna eventi")
                 }
                 ToolbarItem(placement: .topBarTrailing) {
                     Button {
@@ -693,6 +748,7 @@ struct ContentView: View {
                         Image(systemName: "info.circle")
                     }
                     .accessibilityIdentifier("event-types-info-button")
+                    .accessibilityLabel("Informazioni sulle sigle")
                 }
             }
             .searchable(
