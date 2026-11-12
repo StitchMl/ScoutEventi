@@ -106,6 +106,8 @@ import it.buonacaccia.app.data.NotificationTypeRegionRule
 import it.buonacaccia.app.data.guessZone
 import it.buonacaccia.app.ui.components.EventCard
 import it.buonacaccia.app.ui.theme.BuonaCacciaTheme
+import it.buonacaccia.app.update.AppUpdateManager
+import it.buonacaccia.app.update.PreparedUpdate
 import kotlinx.coroutines.launch
 import org.koin.androidx.compose.koinViewModel
 import java.time.LocalDate
@@ -146,6 +148,12 @@ class MainActivity : ComponentActivity() {
 
             // ✅ scope Compose to launch coroutines from the composable
             val activityScope = rememberCoroutineScope()
+            var preparedUpdate by remember { mutableStateOf<PreparedUpdate?>(null) }
+
+            LaunchedEffect(Unit) {
+                preparedUpdate = AppUpdateManager.findDownloadedUpdate(this@MainActivity)
+                    ?: AppUpdateManager.findOrDownloadLatest(this@MainActivity)
+            }
 
             BuonaCacciaTheme(darkTheme = dark) {
                 MainScreen(
@@ -158,8 +166,36 @@ class MainActivity : ComponentActivity() {
                     onOpenBatterySettings = { openBatteryOptimizationSettings(ctx) },
                     onOpenAutostartSettings = { openHuaweiAutostart(ctx) }
                 )
+                preparedUpdate?.let { update ->
+                    AlertDialog(
+                        onDismissRequest = { preparedUpdate = null },
+                        title = { Text("Aggiornamento ${update.versionName}") },
+                        text = {
+                            Text(
+                                "APK scaricato da GitHub Releases e verificato. " +
+                                    "Android chiederà conferma prima dell’installazione.",
+                            )
+                        },
+                        confirmButton = {
+                            Button(
+                                onClick = {
+                                    AppUpdateManager.requestInstall(this@MainActivity, update)
+                                    preparedUpdate = null
+                                },
+                            ) { Text("Installa") }
+                        },
+                        dismissButton = {
+                            TextButton(onClick = { preparedUpdate = null }) { Text("Più tardi") }
+                        },
+                    )
+                }
             }
         }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        AppUpdateManager.resumePendingInstall(this)
     }
 
     // === BATTERY OPTIMIZATION & HUAWEI AUTO-START HANDLING (Play policy-safe) ===
