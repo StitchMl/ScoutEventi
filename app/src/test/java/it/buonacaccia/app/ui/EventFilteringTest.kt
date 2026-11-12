@@ -51,6 +51,16 @@ class EventFilteringTest {
     }
 
     @Test
+    fun filter_doesNotMatchWhenSelectedZoneIsInvalidForEventRegion() {
+        val noZone = event("Lazio", "CFM", Branch.CAPI, "green", "Roma")
+
+        assertEquals(
+            emptyList<BcEvent>(),
+            EventFiltering.filter(listOf(noZone), EventsUiState(zone = "Milano")),
+        )
+    }
+
+    @Test
     fun filter_distinguishesEveryExactTypeReturnedByTheSite() {
         val typed = listOf(
             event("Lazio", "WebiComp sicurezza", Branch.CAPI, "green", "Roma").copy(type = "WebiComp"),

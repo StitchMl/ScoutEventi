@@ -180,34 +180,39 @@ Stretto (dello Stretto)
     fun allNames(): List<String> = zones.map(Zone::name)
 
     fun zonesForRegion(region: String?): List<String> {
-        val key = flatten(region)
-        return zones.filter { key == null || flatten(it.region) == key }.map(Zone::name)
+        val code = BuonaCacciaRegions.codeOf(region)
+        return zones.filter { code == null || BuonaCacciaRegions.codeOf(it.region) == code }.map(Zone::name)
     }
 
     fun zonesForRegions(regions: Set<String>): List<String> {
         if (regions.isEmpty()) return allNames()
-        val keys = regions.mapNotNull(::flatten).toSet()
-        return zones.filter { flatten(it.region) in keys }.map(Zone::name)
+        val codes = regions.mapNotNull(BuonaCacciaRegions::codeOf).toSet()
+        return zones.filter { BuonaCacciaRegions.codeOf(it.region) in codes }.map(Zone::name)
     }
 
-    fun canonicalName(raw: String?, region: String? = null): String? = identify(raw.orEmpty(), region)
+    fun canonicalName(raw: String?, region: String? = null): String? =
+        identify(raw.orEmpty(), region, allowFuzzy = true)
 
-    fun identify(text: String, region: String? = null): String? {
+    fun identify(text: String, region: String? = null, allowFuzzy: Boolean = false): String? {
         val flattenedText = flatten(text) ?: return null
-        val regionKey = flatten(region)
-        val candidates = zones.filter { regionKey == null || flatten(it.region) == regionKey }
+        val regionCode = BuonaCacciaRegions.codeOf(region)
+        val candidates = zones.filter {
+            regionCode == null || BuonaCacciaRegions.codeOf(it.region) == regionCode
+        }
         return candidates
-            .mapNotNull { zone -> matchScore(flattenedText, zone)?.let { score -> zone to score } }
+            .mapNotNull { zone ->
+                matchScore(flattenedText, zone, allowFuzzy)?.let { score -> zone to score }
+            }
             .minWithOrNull(compareBy<Pair<Zone, Int>> { it.second }.thenByDescending { it.first.name.length })
             ?.first
             ?.name
     }
 
-    private fun matchScore(text: String, zone: Zone): Int? =
+    private fun matchScore(text: String, zone: Zone, allowFuzzy: Boolean): Int? =
         (listOf(zone.name) + zone.aliases).mapNotNull { alias ->
             val target = flatten(alias) ?: return@mapNotNull null
             if (containsPhrase(text, target)) return@mapNotNull 0
-            fuzzyDistance(text, target)
+            if (allowFuzzy) fuzzyDistance(text, target) else null
         }.minOrNull()
 
     private fun containsPhrase(text: String, target: String): Boolean =

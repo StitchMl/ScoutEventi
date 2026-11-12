@@ -115,6 +115,16 @@ class NotificationRuleEngineTest {
     }
 
     @Test
+    fun guessZone_prefersExplicitZoneOverLocation() {
+        val event = event(type = "Specialità", region = "Lombardia").copy(
+            zone = "Milano",
+            location = "Bergamo",
+        )
+
+        assertEquals("Milano", event.guessZone())
+    }
+
+    @Test
     fun shouldNotify_filtersByZone() {
         val preferences = NotificationPreferences(
             defaultZones = setOf("Ostiense", "Macerata")

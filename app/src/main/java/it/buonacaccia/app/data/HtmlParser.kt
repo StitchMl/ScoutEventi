@@ -292,7 +292,10 @@ object HtmlParser {
                 }
         }
         if (zone == null) {
-            zone = ZoneCatalog.identify(text)
+            zone = ZoneCatalog.identify(
+                text,
+                allowFuzzy = Regex("(?i)\\bzona\\b").containsMatchIn(text),
+            )
         }
 
         if (open == null && close == null) {

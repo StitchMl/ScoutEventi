@@ -20,7 +20,10 @@ class ZoneCatalogTest {
         assertEquals("Ostiense", ZoneCatalog.identify("MAM_ZONA-OSTIENSE/E-G", "Lazio"))
         assertEquals("Ostiense", ZoneCatalog.identify("MAM zona Ostiense", "Lazio"))
         assertEquals("Ostiense", ZoneCatalog.identify("MAM zona Ostiense", "Lazio"))
-        assertEquals("Milano", ZoneCatalog.identify("Evento della zona Milnao", "Lombardia"))
+        assertEquals(
+            "Milano",
+            ZoneCatalog.identify("Evento della zona Milnao", "Lombardia", allowFuzzy = true),
+        )
     }
 
     @Test
@@ -28,11 +31,18 @@ class ZoneCatalogTest {
         assertNull(ZoneCatalog.identify("Evento Ostiense", "Lombardia"))
         assertTrue(ZoneCatalog.zonesForRegion("Lazio").contains("Ostiense"))
         assertFalse(ZoneCatalog.zonesForRegion("Lazio").contains("Milano"))
+        assertEquals(listOf("Val d'Aosta"), ZoneCatalog.zonesForRegion("Valle d'Aosta"))
     }
 
     @Test
     fun catalog_rejectsNamesMissingFromSourceFile() {
         assertNull(ZoneCatalog.canonicalName("Langhe", "Piemonte"))
         assertNull(ZoneCatalog.canonicalName("Pesaro", "Marche"))
+    }
+
+    @Test
+    fun fuzzyMatching_requiresExplicitPermission() {
+        assertNull(ZoneCatalog.identify("Formazione capi", "Emilia-Romagna"))
+        assertEquals("Carpi", ZoneCatalog.canonicalName("Carpi", "Emilia-Romagna"))
     }
 }

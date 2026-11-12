@@ -58,8 +58,12 @@ internal object EventFiltering {
             regionOf(event)?.equals(region, ignoreCase = true) == true
 
     private fun matchesZone(event: BcEvent, zone: String?): Boolean =
-        zone == null || zone == ALL_REGIONS_LABEL ||
-            event.guessZone() == ZoneCatalog.canonicalName(zone, regionOf(event))
+        if (zone == null || zone == ALL_REGIONS_LABEL) {
+            true
+        } else {
+            val selectedZone = ZoneCatalog.canonicalName(zone, regionOf(event))
+            selectedZone != null && event.guessZone() == selectedZone
+        }
 
     private fun matchesUnit(event: BcEvent, unit: UnitFilter): Boolean = when (unit) {
         UnitFilter.TUTTE -> true

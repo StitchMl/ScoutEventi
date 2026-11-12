@@ -97,7 +97,9 @@ internal fun NotificationSettingsDialog(
         mutableStateOf(initialTypes(interestedTypes, mutedTypes))
     }
     var selectedRegions by remember(interestedRegions) { mutableStateOf(interestedRegions) }
-    var selectedZones by remember(interestedZones) { mutableStateOf(interestedZones) }
+    var selectedZones by remember(interestedZones) {
+        mutableStateOf(interestedZones.mapNotNull(ZoneCatalog::canonicalName).toSet())
+    }
     var rulesByType by remember(typeRegionRules) {
         mutableStateOf(typeRegionRules.associate { it.type to it.regions })
     }
