@@ -87,9 +87,10 @@ object EventAcronymGlossary {
 
 fun BcEvent.guessZone(): String? {
     ZoneCatalog.canonicalName(zone, region)?.let { return it }
-    return ZoneCatalog.identify(
-        text = listOfNotNull(title, location).joinToString(" "),
+    ZoneCatalog.identify(
+        text = title,
         region = region,
         allowFuzzy = Regex("(?i)\\bzona\\b").containsMatchIn(title),
-    )
+    )?.let { return it }
+    return ZoneCatalog.identify(location.orEmpty(), region)
 }

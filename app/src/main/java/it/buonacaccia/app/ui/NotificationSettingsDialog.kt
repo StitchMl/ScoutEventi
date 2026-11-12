@@ -114,7 +114,7 @@ internal fun NotificationSettingsDialog(
     }
 
     fun regionsUsedByNotifications(): Set<String> =
-        if (rulesByType.values.any(Set<String>::isEmpty)) {
+        if (selectedRegions.isEmpty() || rulesByType.values.any(Set<String>::isEmpty)) {
             emptySet()
         } else {
             selectedRegions + rulesByType.values.flatten()
