@@ -7,6 +7,16 @@ import java.util.Locale
 object ZoneCatalog {
     data class Zone(val region: String, val name: String, val aliases: List<String>)
 
+    private data class IndexedZone(
+        val zone: Zone,
+        val regionCode: String?,
+        val flattenedNames: List<String>,
+    )
+
+    private val combiningMarks = Regex("\\p{M}+")
+    private val nonAlphaNumeric = Regex("[^a-z0-9]+")
+    private val whitespace = Regex("\\s+")
+
     private val regionNames = setOf(
         "BASILICATA", "CALABRIA", "CAMPANIA", "EMILIA-ROMAGNA", "FRIULI-VENEZIA-GIULIA",
         "LAZIO", "LIGURIA", "LOMBARDIA", "MARCHE", "PIEMONTE", "TOSCANA", "UMBRIA",
@@ -176,18 +186,28 @@ Stretto (dello Stretto)
     """.trimIndent()
 
     val zones: List<Zone> = parse(source)
+    private val indexedZones: List<IndexedZone> = zones.map { zone ->
+        IndexedZone(
+            zone = zone,
+            regionCode = BuonaCacciaRegions.codeOf(zone.region),
+            flattenedNames = (listOf(zone.name) + zone.aliases).mapNotNull(::flatten),
+        )
+    }
+    private val indexedZonesByRegion = indexedZones.groupBy(IndexedZone::regionCode)
+    private val names = zones.map(Zone::name)
 
-    fun allNames(): List<String> = zones.map(Zone::name)
+    fun allNames(): List<String> = names
 
     fun zonesForRegion(region: String?): List<String> {
         val code = BuonaCacciaRegions.codeOf(region)
-        return zones.filter { code == null || BuonaCacciaRegions.codeOf(it.region) == code }.map(Zone::name)
+        return if (code == null) names else indexedZonesByRegion[code].orEmpty().map { it.zone.name }
     }
 
     fun zonesForRegions(regions: Set<String>): List<String> {
         if (regions.isEmpty()) return allNames()
         val codes = regions.mapNotNull(BuonaCacciaRegions::codeOf).toSet()
-        return zones.filter { BuonaCacciaRegions.codeOf(it.region) in codes }.map(Zone::name)
+        return codes.flatMap { code -> indexedZonesByRegion[code].orEmpty() }
+            .map { it.zone.name }
     }
 
     fun canonicalName(raw: String?, region: String? = null): String? =
@@ -196,21 +216,22 @@ Stretto (dello Stretto)
     fun identify(text: String, region: String? = null, allowFuzzy: Boolean = false): String? {
         val flattenedText = flatten(text) ?: return null
         val regionCode = BuonaCacciaRegions.codeOf(region)
-        val candidates = zones.filter {
-            regionCode == null || BuonaCacciaRegions.codeOf(it.region) == regionCode
-        }
+        val candidates = if (regionCode == null) indexedZones else indexedZonesByRegion[regionCode].orEmpty()
         return candidates
             .mapNotNull { zone ->
                 matchScore(flattenedText, zone, allowFuzzy)?.let { score -> zone to score }
             }
-            .minWithOrNull(compareBy<Pair<Zone, Int>> { it.second }.thenByDescending { it.first.name.length })
+            .minWithOrNull(
+                compareBy<Pair<IndexedZone, Int>> { it.second }
+                    .thenByDescending { it.first.zone.name.length },
+            )
             ?.first
+            ?.zone
             ?.name
     }
 
-    private fun matchScore(text: String, zone: Zone, allowFuzzy: Boolean): Int? =
-        (listOf(zone.name) + zone.aliases).mapNotNull { alias ->
-            val target = flatten(alias) ?: return@mapNotNull null
+    private fun matchScore(text: String, zone: IndexedZone, allowFuzzy: Boolean): Int? =
+        zone.flattenedNames.mapNotNull { target ->
             if (containsPhrase(text, target)) return@mapNotNull 0
             if (allowFuzzy) fuzzyDistance(text, target) else null
         }.minOrNull()
@@ -254,11 +275,11 @@ Stretto (dello Stretto)
     private fun flatten(value: String?): String? {
         val plain = value?.trim()?.takeIf(String::isNotEmpty) ?: return null
         return Normalizer.normalize(plain, Normalizer.Form.NFD)
-            .replace(Regex("\\p{M}+"), "")
+            .replace(combiningMarks, "")
             .lowercase(Locale.ROOT)
-            .replace(Regex("[^a-z0-9]+"), " ")
+            .replace(nonAlphaNumeric, " ")
             .trim()
-            .replace(Regex("\\s+"), " ")
+            .replace(whitespace, " ")
             .takeIf(String::isNotEmpty)
     }
 

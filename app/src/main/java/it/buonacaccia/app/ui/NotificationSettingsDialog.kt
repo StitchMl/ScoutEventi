@@ -322,14 +322,13 @@ internal fun NotificationSettingsDialog(
                         }
 
                         NotificationSettingsPage.ZONES -> {
-                            SearchField(query, "Cerca zona", onQueryChange = { query = it })
                             val allowedByRegion = ZoneCatalog.zonesForRegions(
                                 regionsUsedByNotifications(),
                             ).toSet()
                             val zoneOptions = availableZones.filter { it in allowedByRegion }
                                 .sortedWith(String.CASE_INSENSITIVE_ORDER)
                             SelectionList(
-                                values = zoneOptions.filterBy(query),
+                                values = zoneOptions,
                                 selected = selectedZones,
                                 onToggle = { selectedZones = selectedZones.toggle(it) },
                             )
