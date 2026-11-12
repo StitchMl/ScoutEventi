@@ -92,6 +92,18 @@ Il flusso completo, con segreti GitHub richiesti e modalità `ad-hoc` / `app-sto
 
 ---
 
+## 🔄 Aggiornamenti Android da GitHub
+
+- Ogni tag `vX.Y.Z` avvia la pipeline di release.
+- GitHub pubblica APK firmato e checksum SHA-256 nella sezione Releases.
+- L’app controlla esclusivamente l’ultimo release di `StitchMl/ScoutEventi`.
+- Se trova una versione nuova, scarica APK e checksum, verifica SHA-256 e mostra il pulsante **Installa**.
+- Android richiede la conferma dell’utente prima di aggiornare un APK installato fuori dal Play Store.
+
+La versione `6.2.0` introduce l’updater. Chi usa `6.1.0` deve installare `6.2.0` manualmente una volta; gli aggiornamenti successivi verranno rilevati dall’app.
+
+---
+
 ## 🕰️ Logica Worker
 
 I due worker principali operano in modo indipendente:

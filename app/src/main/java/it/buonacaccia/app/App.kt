@@ -13,6 +13,7 @@ import androidx.work.WorkManager
 import it.buonacaccia.app.data.EventStore
 import it.buonacaccia.app.background.NewEventsWorker
 import it.buonacaccia.app.background.SubscriptionsWorker
+import it.buonacaccia.app.background.UpdateWorker
 import it.buonacaccia.app.data.EventsRepository
 import it.buonacaccia.app.di.networkModule
 import it.buonacaccia.app.notify.Notifier
@@ -110,6 +111,19 @@ class App : Application(), Configuration.Provider {
             "SubscriptionsWork",
             ExistingPeriodicWorkPolicy.UPDATE,
             subscriptionsWork
+        )
+
+        val updateWork = PeriodicWorkRequestBuilder<UpdateWorker>(24, TimeUnit.HOURS)
+            .setConstraints(
+                Constraints.Builder()
+                    .setRequiredNetworkType(NetworkType.CONNECTED)
+                    .build()
+            )
+            .build()
+        workManager.enqueueUniquePeriodicWork(
+            "GitHubReleaseUpdateWork",
+            ExistingPeriodicWorkPolicy.UPDATE,
+            updateWork,
         )
 
         val bootNow = OneTimeWorkRequestBuilder<NewEventsWorker>()
