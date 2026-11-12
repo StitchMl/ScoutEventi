@@ -120,6 +120,13 @@ internal fun NotificationSettingsDialog(
             selectedRegions + rulesByType.values.flatten()
         }
 
+    fun removeZonesOutsideNotificationRegions() {
+        val visibleZones = ZoneCatalog.zonesForRegions(regionsUsedByNotifications()).toSet()
+        selectedZones = selectedZones.filterTo(linkedSetOf()) { zone ->
+            ZoneCatalog.canonicalName(zone) in visibleZones
+        }
+    }
+
     Dialog(
         onDismissRequest = onDismiss,
         properties = DialogProperties(
@@ -357,11 +364,13 @@ internal fun NotificationSettingsDialog(
                                 item {
                                     RuleModeRow("Eredita regioni predefinite", configured == null) {
                                         rulesByType = rulesByType - type
+                                        removeZonesOutsideNotificationRegions()
                                     }
                                 }
                                 item {
                                     RuleModeRow(ALL_ITALY_LABEL, configured?.isEmpty() == true) {
                                         rulesByType = rulesByType + (type to emptySet())
+                                        removeZonesOutsideNotificationRegions()
                                     }
                                 }
                                 item { HorizontalDivider() }
@@ -380,6 +389,7 @@ internal fun NotificationSettingsDialog(
                                         modifier = Modifier.clickable {
                                             val current = configured ?: emptySet()
                                             rulesByType = rulesByType + (type to current.toggle(region))
+                                            removeZonesOutsideNotificationRegions()
                                         },
                                     )
                                 }
