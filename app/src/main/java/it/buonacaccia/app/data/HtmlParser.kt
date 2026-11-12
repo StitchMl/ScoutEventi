@@ -262,7 +262,7 @@ object HtmlParser {
         var close = grab("MainContent_EventFormView_lbSubsTo")
         var seats = doc.selectFirst("#MainContent_EventFormView_lbSeats")?.text()?.trim()
         var taken = doc.selectFirst("#MainContent_EventFormView_lbTaken")?.text()?.trim()
-        var zone = ZoneCatalog.normalize(
+        var zone = ZoneCatalog.canonicalName(
             doc.selectFirst("#MainContent_EventFormView_lbZone")?.text()
         )
 
@@ -288,11 +288,21 @@ object HtmlParser {
         if (zone == null) {
             Regex("(?i)zona:\\s*([^\\n\\r<|]+)")
                 .find(structuredText)?.groupValues?.getOrNull(1)?.let {
-                    zone = ZoneCatalog.normalize(it)
+                    zone = ZoneCatalog.canonicalName(it)
                 }
         }
         if (zone == null) {
-            zone = ZoneCatalog.fromTitle(text)
+            val headings = doc.select("h1, h2, h3").joinToString(" ") { it.text() }
+            zone = ZoneCatalog.identify(
+                headings,
+                allowFuzzy = Regex("(?i)\\bzona\\b").containsMatchIn(headings),
+            )
+        }
+        if (zone == null) {
+            zone = ZoneCatalog.identify(
+                text,
+                allowFuzzy = Regex("(?i)\\bzona\\b").containsMatchIn(text),
+            )
         }
 
         if (open == null && close == null) {

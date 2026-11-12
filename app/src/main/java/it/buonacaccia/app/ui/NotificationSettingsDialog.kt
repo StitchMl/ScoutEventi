@@ -97,7 +97,9 @@ internal fun NotificationSettingsDialog(
         mutableStateOf(initialTypes(interestedTypes, mutedTypes))
     }
     var selectedRegions by remember(interestedRegions) { mutableStateOf(interestedRegions) }
-    var selectedZones by remember(interestedZones) { mutableStateOf(interestedZones) }
+    var selectedZones by remember(interestedZones) {
+        mutableStateOf(interestedZones.mapNotNull(ZoneCatalog::canonicalName).toSet())
+    }
     var rulesByType by remember(typeRegionRules) {
         mutableStateOf(typeRegionRules.associate { it.type to it.regions })
     }
@@ -109,6 +111,20 @@ internal fun NotificationSettingsDialog(
     fun navigate(destination: NotificationSettingsPage) {
         query = ""
         page = destination
+    }
+
+    fun regionsUsedByNotifications(): Set<String> =
+        if (selectedRegions.isEmpty() || rulesByType.values.any(Set<String>::isEmpty)) {
+            emptySet()
+        } else {
+            selectedRegions + rulesByType.values.flatten()
+        }
+
+    fun removeZonesOutsideNotificationRegions() {
+        val visibleZones = ZoneCatalog.zonesForRegions(regionsUsedByNotifications()).toSet()
+        selectedZones = selectedZones.filterTo(linkedSetOf()) { zone ->
+            ZoneCatalog.canonicalName(zone) in visibleZones
+        }
     }
 
     Dialog(
@@ -293,31 +309,25 @@ internal fun NotificationSettingsDialog(
                             SelectionList(
                                 values = regions.filterBy(query),
                                 selected = selectedRegions,
-                                onToggle = { selectedRegions = selectedRegions.toggle(it) },
+                                onToggle = {
+                                    selectedRegions = selectedRegions.toggle(it)
+                                    val visibleZones = ZoneCatalog.zonesForRegions(
+                                        regionsUsedByNotifications(),
+                                    ).toSet()
+                                    selectedZones = selectedZones.filterTo(linkedSetOf()) { zone ->
+                                        ZoneCatalog.canonicalName(zone) in visibleZones
+                                    }
+                                },
                             )
                         }
 
                         NotificationSettingsPage.ZONES -> {
-                            SearchField(query, "Cerca o inserisci zona", onQueryChange = { query = it })
-                            val normalizedQuery = ZoneCatalog.normalize(query)
-                            val zoneOptions = (availableZones + selectedZones)
-                                .mapNotNull(ZoneCatalog::normalize)
-                                .distinctBy { it.lowercase() }
+                            SearchField(query, "Cerca zona", onQueryChange = { query = it })
+                            val allowedByRegion = ZoneCatalog.zonesForRegions(
+                                regionsUsedByNotifications(),
+                            ).toSet()
+                            val zoneOptions = availableZones.filter { it in allowedByRegion }
                                 .sortedWith(String.CASE_INSENSITIVE_ORDER)
-                            if (normalizedQuery != null && zoneOptions.none {
-                                    it.equals(normalizedQuery, ignoreCase = true)
-                                }) {
-                                TextButton(
-                                    onClick = {
-                                        selectedZones = selectedZones + normalizedQuery
-                                        query = ""
-                                    },
-                                    modifier = Modifier.padding(horizontal = 12.dp),
-                                ) {
-                                    Icon(Icons.Default.Add, contentDescription = null)
-                                    Text("Aggiungi \"$normalizedQuery\"")
-                                }
-                            }
                             SelectionList(
                                 values = zoneOptions.filterBy(query),
                                 selected = selectedZones,
@@ -354,11 +364,13 @@ internal fun NotificationSettingsDialog(
                                 item {
                                     RuleModeRow("Eredita regioni predefinite", configured == null) {
                                         rulesByType = rulesByType - type
+                                        removeZonesOutsideNotificationRegions()
                                     }
                                 }
                                 item {
                                     RuleModeRow(ALL_ITALY_LABEL, configured?.isEmpty() == true) {
                                         rulesByType = rulesByType + (type to emptySet())
+                                        removeZonesOutsideNotificationRegions()
                                     }
                                 }
                                 item { HorizontalDivider() }
@@ -377,6 +389,7 @@ internal fun NotificationSettingsDialog(
                                         modifier = Modifier.clickable {
                                             val current = configured ?: emptySet()
                                             rulesByType = rulesByType + (type to current.toggle(region))
+                                            removeZonesOutsideNotificationRegions()
                                         },
                                     )
                                 }

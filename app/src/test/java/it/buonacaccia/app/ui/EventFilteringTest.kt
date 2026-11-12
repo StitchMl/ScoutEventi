@@ -42,11 +42,35 @@ class EventFilteringTest {
 
     @Test
     fun filter_matchesInferredZone() {
-        val zonedEvent = events.first().copy(zone = "Milano")
+        val zonedEvent = events.first().copy(zone = "Milnao")
 
         assertEquals(
             listOf(zonedEvent),
             EventFiltering.filter(listOf(zonedEvent), EventsUiState(zone = "milano")),
+        )
+    }
+
+    @Test
+    fun filter_doesNotMatchWhenSelectedZoneIsInvalidForEventRegion() {
+        val noZone = event("Lazio", "CFM", Branch.CAPI, "green", "Roma")
+
+        assertEquals(
+            emptyList<BcEvent>(),
+            EventFiltering.filter(listOf(noZone), EventsUiState(zone = "Milano")),
+        )
+    }
+
+    @Test
+    fun filter_preservesSelectedZoneIdentityAcrossRegions() {
+        val lazioCastelli = event("Lazio", "Evento", Branch.CAPI, "green", "Roma")
+            .copy(zone = "Castelli")
+
+        assertEquals(
+            emptyList<BcEvent>(),
+            EventFiltering.filter(
+                listOf(lazioCastelli),
+                EventsUiState(zone = "Castelli Nisseni"),
+            ),
         )
     }
 
