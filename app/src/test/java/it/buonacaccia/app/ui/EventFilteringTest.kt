@@ -42,7 +42,7 @@ class EventFilteringTest {
 
     @Test
     fun filter_matchesInferredZone() {
-        val zonedEvent = events.first().copy(zone = "Milano")
+        val zonedEvent = events.first().copy(zone = "Milnao")
 
         assertEquals(
             listOf(zonedEvent),

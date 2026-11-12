@@ -14,7 +14,7 @@ import it.buonacaccia.app.data.BuonaCacciaScopes
 import it.buonacaccia.app.data.EventStore
 import it.buonacaccia.app.data.EventsRepository
 import it.buonacaccia.app.data.FetchSafety
-import it.buonacaccia.app.data.guessZone
+import it.buonacaccia.app.data.ZoneCatalog
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import kotlin.coroutines.cancellation.CancellationException
@@ -103,7 +103,8 @@ class EventsViewModel(
     fun onRegionChange(r: String?) {
         if (state.region == r) return
         val previousFilter = currentServerFilter()
-        state = state.copy(region = r)
+        val validZone = state.zone?.takeIf { it in ZoneCatalog.zonesForRegion(r) }
+        state = state.copy(region = r, zone = validZone)
         if (currentServerFilter() != previousFilter) {
             refresh()
         }
@@ -155,9 +156,7 @@ class EventsViewModel(
     val regions: List<String> get() = EventFiltering.availableRegions(state.items)
 
     val zones: List<String> get() {
-        val present = state.items.mapNotNull { it.guessZone() }
-            .toSortedSet(String.CASE_INSENSITIVE_ORDER)
-        return listOf("Tutte") + present.toList()
+        return listOf("Tutte") + ZoneCatalog.zonesForRegion(state.region)
     }
 
     val typeFilters: List<TypeFilter>

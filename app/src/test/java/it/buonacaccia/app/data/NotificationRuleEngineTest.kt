@@ -93,8 +93,8 @@ class NotificationRuleEngineTest {
 
     @Test
     fun guessZone_extractsFromZoneOrLocation() {
-        val eventWithZone = event(type = "Specialità", region = "Piemonte").copy(zone = "Langhe")
-        assertEquals("Langhe", eventWithZone.guessZone())
+        val eventWithZone = event(type = "Specialità", region = "Piemonte").copy(zone = "Torino")
+        assertEquals("Torino", eventWithZone.guessZone())
 
         // 2-letter province codes in parentheses should be ignored
         val eventWithProvince = event(type = "Specialità", region = "Piemonte").copy(location = "Alba (CN)")
@@ -104,11 +104,11 @@ class NotificationRuleEngineTest {
         val eventWithRealZone = event(type = "Specialità", region = "Lazio").copy(location = "Roma (Ostiense)")
         assertEquals("Ostiense", eventWithRealZone.guessZone())
 
-        // Title zone extraction
+        // Il confronto appiattisce punteggiatura e tollera un refuso.
         val eventWithTitleZone = event(type = "Specialità", region = "Marche").copy(
-            title = "MF-Aggiornam. metodologico E/G - Zona Pesaro_Patto"
+            title = "MF-Aggiornam. metodologico E/G - Zona Maceratra_Patto"
         )
-        assertEquals("Pesaro", eventWithTitleZone.guessZone())
+        assertEquals("Macerata", eventWithTitleZone.guessZone())
 
         val eventWithoutZone = event(type = "Specialità", region = "Piemonte")
         assertNull(eventWithoutZone.guessZone())
@@ -117,7 +117,7 @@ class NotificationRuleEngineTest {
     @Test
     fun shouldNotify_filtersByZone() {
         val preferences = NotificationPreferences(
-            defaultZones = setOf("Ostiense", "Pesaro")
+            defaultZones = setOf("Ostiense", "Macerata")
         )
 
         // Event in zone Ostiense should notify
@@ -157,13 +157,13 @@ class NotificationRuleEngineTest {
     fun shouldNotify_appliesZoneAlongsideTypeSpecificRegion() {
         val preferences = NotificationPreferences(
             allowedTypes = setOf("Piccole Orme"),
-            defaultZones = setOf("Roma"),
+            defaultZones = setOf("Roma Centro Urbis"),
             typeRegionRules = listOf(
                 NotificationTypeRegionRule("Piccole Orme", setOf("Lazio")),
             ),
         )
 
-        val roma = event("Piccole Orme", "Lazio").copy(zone = "Roma")
+        val roma = event("Piccole Orme", "Lazio").copy(zone = "Centro Urbis")
         val ostiense = event("Piccole Orme", "Lazio").copy(zone = "Ostiense")
 
         assertTrue(NotificationRuleEngine.shouldNotify(roma, preferences))

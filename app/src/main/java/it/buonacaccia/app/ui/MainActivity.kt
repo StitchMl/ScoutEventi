@@ -103,7 +103,7 @@ import it.buonacaccia.app.data.BcEvent
 import it.buonacaccia.app.data.EventAcronymGlossary
 import it.buonacaccia.app.data.EventStore
 import it.buonacaccia.app.data.NotificationTypeRegionRule
-import it.buonacaccia.app.data.guessZone
+import it.buonacaccia.app.data.ZoneCatalog
 import it.buonacaccia.app.ui.components.EventCard
 import it.buonacaccia.app.ui.theme.BuonaCacciaTheme
 import it.buonacaccia.app.update.AppUpdateManager
@@ -309,11 +309,7 @@ private fun MainScreen(
             .toSortedSet(String.CASE_INSENSITIVE_ORDER)
             .toList()
     }
-    val availableZones = remember(state.items) {
-        state.items.mapNotNull { it.guessZone() }
-            .toSortedSet(String.CASE_INSENSITIVE_ORDER)
-            .toList()
-    }
+    val availableZones = remember { ZoneCatalog.allNames() }
     val mutedTypes by EventStore.muteTypesFlow(context).collectAsState(initial = emptySet())
 
     Scaffold(

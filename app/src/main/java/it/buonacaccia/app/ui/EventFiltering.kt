@@ -3,6 +3,7 @@ package it.buonacaccia.app.ui
 import it.buonacaccia.app.data.BcEvent
 import it.buonacaccia.app.data.Branch
 import it.buonacaccia.app.data.guessZone
+import it.buonacaccia.app.data.ZoneCatalog
 import java.util.Locale
 
 enum class UnitFilter { TUTTE, BRANCO, REPARTO, CLAN, CAPI }
@@ -58,7 +59,7 @@ internal object EventFiltering {
 
     private fun matchesZone(event: BcEvent, zone: String?): Boolean =
         zone == null || zone == ALL_REGIONS_LABEL ||
-            event.guessZone()?.equals(zone, ignoreCase = true) == true
+            event.guessZone() == ZoneCatalog.canonicalName(zone, regionOf(event))
 
     private fun matchesUnit(event: BcEvent, unit: UnitFilter): Boolean = when (unit) {
         UnitFilter.TUTTE -> true

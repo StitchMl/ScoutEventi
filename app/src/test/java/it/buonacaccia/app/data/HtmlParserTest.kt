@@ -206,23 +206,26 @@ class HtmlParserTest {
         val event1 = BcEvent(
             id = "1",
             type = "CFM",
-            title = "MF-Aggiornam. metodologico E/G - Zona Pesaro_Patto associativo",
+            title = "MF-Aggiornam. metodologico E/G - Zona Maceratra_Patto associativo",
             region = "Marche",
             startDate = LocalDate.now(),
             endDate = LocalDate.now(),
             fee = "0 €",
-            location = "Pesaro (PU)",
+            location = "Macerata (MC)",
             enrolled = "0",
             status = "Aperto",
             detailUrl = "https://example.com"
         )
-        assertEquals("Pesaro", event1.guessZone())
+        assertEquals("Macerata", event1.guessZone())
 
-        val event2 = event1.copy(title = "Assemblea di Zona Ostiense - Convocazione")
+        val event2 = event1.copy(region = "Lazio", title = "Assemblea di Zona Ostiense - Convocazione")
         assertEquals("Ostiense", event2.guessZone())
 
-        val event3 = event1.copy(title = "MF-Percorso di tirocinio - Zona Lucca Massa Carrara - Tirocinio 2")
-        assertEquals("Lucca Massa Carrara", event3.guessZone())
+        val event3 = event1.copy(
+            region = "Toscana",
+            title = "MF-Percorso di tirocinio - Zona Lucca Massa Carrara - Tirocinio 2",
+        )
+        assertEquals("Lucca-Massa-Carrara", event3.guessZone())
     }
 
     @Test
@@ -261,8 +264,8 @@ class HtmlParserTest {
         )
 
         assertEquals("Ostiense", base.copy(zone = "  ZONA   OSTIENSE  ").guessZone())
-        assertEquals("Pesaro", base.copy(zone = "Pesaro_Patto associativo").guessZone())
-        assertEquals("Riviera d’Ulisse", base.copy(zone = "riviera d’ulisse").guessZone())
+        assertEquals("Pontina", base.copy(zone = "Pontina_Patto associativo").guessZone())
+        assertEquals(null, base.copy(zone = "riviera d’ulisse").guessZone())
         assertEquals(null, base.copy(zone = "(da definire)").guessZone())
     }
 
@@ -271,7 +274,7 @@ class HtmlParserTest {
         val html = """
             <html>
               <body>
-                <h2>[Marche] MF-Aggiornam. metodologico E/G - Zona Pesaro_Patto associativo</h2>
+                <h2>[Marche] MF-Aggiornam. metodologico E/G - Zona Maceratra_Patto associativo</h2>
                 <p>Le iscrizioni apriranno il 10/12/2026 e chiuderanno il 20/12/2026.</p>
                 <p>Altro testo descrittivo...</p>
               </body>
@@ -279,7 +282,7 @@ class HtmlParserTest {
         """.trimIndent()
 
         val subs = HtmlParser.parseSubscriptions(html)
-        assertEquals("Pesaro", subs.zone)
+        assertEquals("Macerata", subs.zone)
     }
 
     @Test

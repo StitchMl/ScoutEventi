@@ -293,31 +293,21 @@ internal fun NotificationSettingsDialog(
                             SelectionList(
                                 values = regions.filterBy(query),
                                 selected = selectedRegions,
-                                onToggle = { selectedRegions = selectedRegions.toggle(it) },
+                                onToggle = {
+                                    selectedRegions = selectedRegions.toggle(it)
+                                    val visibleZones = ZoneCatalog.zonesForRegions(selectedRegions).toSet()
+                                    selectedZones = selectedZones.filterTo(linkedSetOf()) { zone ->
+                                        ZoneCatalog.canonicalName(zone) in visibleZones
+                                    }
+                                },
                             )
                         }
 
                         NotificationSettingsPage.ZONES -> {
-                            SearchField(query, "Cerca o inserisci zona", onQueryChange = { query = it })
-                            val normalizedQuery = ZoneCatalog.normalize(query)
-                            val zoneOptions = (availableZones + selectedZones)
-                                .mapNotNull(ZoneCatalog::normalize)
-                                .distinctBy { it.lowercase() }
+                            SearchField(query, "Cerca zona", onQueryChange = { query = it })
+                            val allowedByRegion = ZoneCatalog.zonesForRegions(selectedRegions).toSet()
+                            val zoneOptions = availableZones.filter { it in allowedByRegion }
                                 .sortedWith(String.CASE_INSENSITIVE_ORDER)
-                            if (normalizedQuery != null && zoneOptions.none {
-                                    it.equals(normalizedQuery, ignoreCase = true)
-                                }) {
-                                TextButton(
-                                    onClick = {
-                                        selectedZones = selectedZones + normalizedQuery
-                                        query = ""
-                                    },
-                                    modifier = Modifier.padding(horizontal = 12.dp),
-                                ) {
-                                    Icon(Icons.Default.Add, contentDescription = null)
-                                    Text("Aggiungi \"$normalizedQuery\"")
-                                }
-                            }
                             SelectionList(
                                 values = zoneOptions.filterBy(query),
                                 selected = selectedZones,

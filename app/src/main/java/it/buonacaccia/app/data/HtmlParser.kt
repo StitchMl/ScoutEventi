@@ -262,7 +262,7 @@ object HtmlParser {
         var close = grab("MainContent_EventFormView_lbSubsTo")
         var seats = doc.selectFirst("#MainContent_EventFormView_lbSeats")?.text()?.trim()
         var taken = doc.selectFirst("#MainContent_EventFormView_lbTaken")?.text()?.trim()
-        var zone = ZoneCatalog.normalize(
+        var zone = ZoneCatalog.canonicalName(
             doc.selectFirst("#MainContent_EventFormView_lbZone")?.text()
         )
 
@@ -288,11 +288,11 @@ object HtmlParser {
         if (zone == null) {
             Regex("(?i)zona:\\s*([^\\n\\r<|]+)")
                 .find(structuredText)?.groupValues?.getOrNull(1)?.let {
-                    zone = ZoneCatalog.normalize(it)
+                    zone = ZoneCatalog.canonicalName(it)
                 }
         }
         if (zone == null) {
-            zone = ZoneCatalog.fromTitle(text)
+            zone = ZoneCatalog.identify(text)
         }
 
         if (open == null && close == null) {
