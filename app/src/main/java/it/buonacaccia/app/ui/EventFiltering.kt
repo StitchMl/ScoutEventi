@@ -31,10 +31,12 @@ internal object EventFiltering {
 
     fun filter(events: List<BcEvent>, state: EventsUiState): List<BcEvent> {
         val query = state.query.normalized()
+        val hasZoneFilter = state.zone != null && state.zone != ALL_REGIONS_LABEL
+        val selectedZone = state.zone?.let(ZoneCatalog::canonicalName)
         return events.filter { event ->
             matchesQuery(event, query) &&
                 matchesRegion(event, state.region) &&
-                matchesZone(event, state.zone) &&
+                matchesZone(event, hasZoneFilter, selectedZone) &&
                 matchesUnit(event, state.unit) &&
                 matchesType(event, state.type) &&
                 (!state.onlyOpen || event.statusColor in OPEN_STATUS_COLORS)
@@ -57,13 +59,8 @@ internal object EventFiltering {
         region == null || region == ALL_REGIONS_LABEL ||
             regionOf(event)?.equals(region, ignoreCase = true) == true
 
-    private fun matchesZone(event: BcEvent, zone: String?): Boolean =
-        if (zone == null || zone == ALL_REGIONS_LABEL) {
-            true
-        } else {
-            val selectedZone = ZoneCatalog.canonicalName(zone)
-            selectedZone != null && event.guessZone() == selectedZone
-        }
+    private fun matchesZone(event: BcEvent, enabled: Boolean, selectedZone: String?): Boolean =
+        !enabled || selectedZone != null && event.guessZone() == selectedZone
 
     private fun matchesUnit(event: BcEvent, unit: UnitFilter): Boolean = when (unit) {
         UnitFilter.TUTTE -> true
