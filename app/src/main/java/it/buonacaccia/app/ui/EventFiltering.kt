@@ -61,7 +61,7 @@ internal object EventFiltering {
         if (zone == null || zone == ALL_REGIONS_LABEL) {
             true
         } else {
-            val selectedZone = ZoneCatalog.canonicalName(zone, regionOf(event))
+            val selectedZone = ZoneCatalog.canonicalName(zone)
             selectedZone != null && event.guessZone() == selectedZone
         }
 

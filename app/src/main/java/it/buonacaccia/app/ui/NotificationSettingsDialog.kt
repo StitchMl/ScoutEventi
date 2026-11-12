@@ -113,6 +113,13 @@ internal fun NotificationSettingsDialog(
         page = destination
     }
 
+    fun regionsUsedByNotifications(): Set<String> =
+        if (rulesByType.values.any(Set<String>::isEmpty)) {
+            emptySet()
+        } else {
+            selectedRegions + rulesByType.values.flatten()
+        }
+
     Dialog(
         onDismissRequest = onDismiss,
         properties = DialogProperties(
@@ -297,7 +304,9 @@ internal fun NotificationSettingsDialog(
                                 selected = selectedRegions,
                                 onToggle = {
                                     selectedRegions = selectedRegions.toggle(it)
-                                    val visibleZones = ZoneCatalog.zonesForRegions(selectedRegions).toSet()
+                                    val visibleZones = ZoneCatalog.zonesForRegions(
+                                        regionsUsedByNotifications(),
+                                    ).toSet()
                                     selectedZones = selectedZones.filterTo(linkedSetOf()) { zone ->
                                         ZoneCatalog.canonicalName(zone) in visibleZones
                                     }
@@ -307,7 +316,9 @@ internal fun NotificationSettingsDialog(
 
                         NotificationSettingsPage.ZONES -> {
                             SearchField(query, "Cerca zona", onQueryChange = { query = it })
-                            val allowedByRegion = ZoneCatalog.zonesForRegions(selectedRegions).toSet()
+                            val allowedByRegion = ZoneCatalog.zonesForRegions(
+                                regionsUsedByNotifications(),
+                            ).toSet()
                             val zoneOptions = availableZones.filter { it in allowedByRegion }
                                 .sortedWith(String.CASE_INSENSITIVE_ORDER)
                             SelectionList(

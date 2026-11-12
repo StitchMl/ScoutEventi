@@ -61,6 +61,20 @@ class EventFilteringTest {
     }
 
     @Test
+    fun filter_preservesSelectedZoneIdentityAcrossRegions() {
+        val lazioCastelli = event("Lazio", "Evento", Branch.CAPI, "green", "Roma")
+            .copy(zone = "Castelli")
+
+        assertEquals(
+            emptyList<BcEvent>(),
+            EventFiltering.filter(
+                listOf(lazioCastelli),
+                EventsUiState(zone = "Castelli Nisseni"),
+            ),
+        )
+    }
+
+    @Test
     fun filter_distinguishesEveryExactTypeReturnedByTheSite() {
         val typed = listOf(
             event("Lazio", "WebiComp sicurezza", Branch.CAPI, "green", "Roma").copy(type = "WebiComp"),
