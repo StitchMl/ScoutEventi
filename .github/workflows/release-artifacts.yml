@@ -147,6 +147,7 @@ jobs:
       - name: Publish GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
           VERSION: ${{ needs.metadata.outputs.version }}
         run: |
           set -euo pipefail

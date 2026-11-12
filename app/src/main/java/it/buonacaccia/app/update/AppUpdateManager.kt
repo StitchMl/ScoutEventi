@@ -8,6 +8,9 @@ import android.provider.Settings
 import androidx.core.content.FileProvider
 import it.buonacaccia.app.BuildConfig
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -34,29 +37,40 @@ object AppUpdateManager {
         .followRedirects(true)
         .followSslRedirects(false)
         .build()
+    private val updateMutex = Mutex()
 
     suspend fun findOrDownloadLatest(context: Context): PreparedUpdate? = withContext(Dispatchers.IO) {
-        val release = fetchLatestRelease() ?: return@withContext null
-        if (!isNewerVersion(release.versionName, BuildConfig.VERSION_NAME)) return@withContext null
+        try {
+            updateMutex.withLock { findOrDownloadLatestLocked(context) }
+        } catch (cancellation: CancellationException) {
+            throw cancellation
+        } catch (_: Exception) {
+            null
+        }
+    }
+
+    private fun findOrDownloadLatestLocked(context: Context): PreparedUpdate? {
+        val release = fetchLatestRelease() ?: return null
+        if (!isNewerVersion(release.versionName, BuildConfig.VERSION_NAME)) return null
 
         val updateDir = File(context.cacheDir, "updates").apply { mkdirs() }
         val apk = File(updateDir, "ScoutEventi-${release.versionName}.apk")
         if (!apk.isFile || sha256(apk) != release.expectedSha256) {
-            downloadApk(release.apkUrl, apk) ?: return@withContext null
+            downloadApk(release.apkUrl, apk) ?: return null
             if (sha256(apk) != release.expectedSha256) {
-                if (apk.exists() && !apk.delete()) return@withContext null
-                return@withContext null
+                if (apk.exists() && !apk.delete()) return null
+                return null
             }
         }
 
-        PreparedUpdate(release.versionName, apk)
+        return PreparedUpdate(release.versionName, apk)
     }
 
     fun requestInstall(context: Context, update: PreparedUpdate) {
-        rememberPending(context, update)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O &&
             !context.packageManager.canRequestPackageInstalls()
         ) {
+            rememberPending(context, update)
             context.startActivity(
                 Intent(
                     Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES,
@@ -65,6 +79,7 @@ object AppUpdateManager {
             )
             return
         }
+        clearPending(context)
         launchPackageInstaller(context, update.apkFile)
     }
 
@@ -81,7 +96,7 @@ object AppUpdateManager {
             return
         }
         launchPackageInstaller(context, file)
-        prefs.edit().clear().apply()
+        clearPending(context)
     }
 
     internal fun isNewerVersion(candidate: String, current: String): Boolean {
@@ -182,6 +197,10 @@ object AppUpdateManager {
             .putString(PENDING_APK_PATH, update.apkFile.absolutePath)
             .putString(PENDING_VERSION, update.versionName)
             .apply()
+    }
+
+    private fun clearPending(context: Context) {
+        context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE).edit().clear().apply()
     }
 
     private fun sha256(file: File): String {
