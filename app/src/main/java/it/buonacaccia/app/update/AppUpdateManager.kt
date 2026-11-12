@@ -27,6 +27,8 @@ object AppUpdateManager {
     private const val PREFS_NAME = "github_update"
     private const val PENDING_APK_PATH = "pending_apk_path"
     private const val PENDING_VERSION = "pending_version"
+    private const val USER_AGENT_HEADER = "User-Agent"
+    private const val GITHUB_HOST = "github.com"
 
     private val client = OkHttpClient.Builder()
         .followRedirects(true)
@@ -42,7 +44,7 @@ object AppUpdateManager {
         if (!apk.isFile || sha256(apk) != release.expectedSha256) {
             downloadApk(release.apkUrl, apk) ?: return@withContext null
             if (sha256(apk) != release.expectedSha256) {
-                apk.delete()
+                if (apk.exists() && !apk.delete()) return@withContext null
                 return@withContext null
             }
         }
@@ -101,7 +103,7 @@ object AppUpdateManager {
         val request = Request.Builder()
             .url(LATEST_RELEASE_URL)
             .header("Accept", "application/vnd.github+json")
-            .header("User-Agent", "ScoutEventi-Android/${BuildConfig.VERSION_NAME}")
+            .header(USER_AGENT_HEADER, "ScoutEventi-Android/${BuildConfig.VERSION_NAME}")
             .build()
         return client.newCall(request).execute().use { response ->
             if (!response.isSuccessful || response.request.url.host != "api.github.com") return null
@@ -131,8 +133,8 @@ object AppUpdateManager {
     }
 
     private fun downloadText(url: String): String? {
-        if (Uri.parse(url).host != "github.com") return null
-        val request = Request.Builder().url(url).header("User-Agent", "ScoutEventi-Android").build()
+        if (Uri.parse(url).host != GITHUB_HOST) return null
+        val request = Request.Builder().url(url).header(USER_AGENT_HEADER, "ScoutEventi-Android").build()
         return client.newCall(request).execute().use { response ->
             if (!response.isSuccessful || !isTrustedDownloadHost(response.request.url.host)) return null
             val body = response.body
@@ -142,8 +144,8 @@ object AppUpdateManager {
     }
 
     private fun downloadApk(url: String, destination: File): File? {
-        if (Uri.parse(url).host != "github.com") return null
-        val request = Request.Builder().url(url).header("User-Agent", "ScoutEventi-Android").build()
+        if (Uri.parse(url).host != GITHUB_HOST) return null
+        val request = Request.Builder().url(url).header(USER_AGENT_HEADER, "ScoutEventi-Android").build()
         return client.newCall(request).execute().use { response ->
             if (!response.isSuccessful || !isTrustedDownloadHost(response.request.url.host)) return null
             val body = response.body
@@ -154,11 +156,11 @@ object AppUpdateManager {
                 partial.outputStream().use { output -> input.copyTo(output) }
             }
             if (partial.length() != contentLength) {
-                partial.delete()
+                if (partial.exists() && !partial.delete()) return null
                 return null
             }
             if (!partial.renameTo(destination)) {
-                partial.delete()
+                if (partial.exists() && !partial.delete()) return null
                 return null
             }
             destination
@@ -202,7 +204,7 @@ object AppUpdateManager {
         .map { it.toIntOrNull() ?: 0 }
 
     private fun isTrustedDownloadHost(host: String): Boolean =
-        host == "github.com" || host == "objects.githubusercontent.com" ||
+        host == GITHUB_HOST || host == "objects.githubusercontent.com" ||
             host.endsWith(".githubusercontent.com")
 
     private data class ReleaseAssetSet(
