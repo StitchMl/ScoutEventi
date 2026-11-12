@@ -22,7 +22,10 @@ class UpdateWorker(
     params: WorkerParameters,
 ) : CoroutineWorker(appContext, params) {
     override suspend fun doWork(): Result = runCatching {
-        AppUpdateManager.findOrDownloadLatest(applicationContext)?.let(::notifyUpdateReady)
+        AppUpdateManager.findOrDownloadLatest(
+            context = applicationContext,
+            suppressFailures = false,
+        )?.let(::notifyUpdateReady)
         Result.success()
     }.getOrElse { Result.retry() }
 

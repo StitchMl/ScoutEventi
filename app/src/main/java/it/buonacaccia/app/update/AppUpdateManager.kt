@@ -42,13 +42,16 @@ object AppUpdateManager {
         .build()
     private val updateMutex = Mutex()
 
-    suspend fun findOrDownloadLatest(context: Context): PreparedUpdate? = withContext(Dispatchers.IO) {
+    suspend fun findOrDownloadLatest(
+        context: Context,
+        suppressFailures: Boolean = true,
+    ): PreparedUpdate? = withContext(Dispatchers.IO) {
         try {
             updateMutex.withLock { findOrDownloadLatestLocked(context) }
         } catch (cancellation: CancellationException) {
             throw cancellation
-        } catch (_: Exception) {
-            null
+        } catch (error: Exception) {
+            if (suppressFailures) null else throw error
         }
     }
 
