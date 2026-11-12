@@ -30,6 +30,9 @@ object AppUpdateManager {
     private const val PREFS_NAME = "github_update"
     private const val PENDING_APK_PATH = "pending_apk_path"
     private const val PENDING_VERSION = "pending_version"
+    private const val DOWNLOADED_APK_PATH = "downloaded_apk_path"
+    private const val DOWNLOADED_VERSION = "downloaded_version"
+    private const val DOWNLOADED_SHA256 = "downloaded_sha256"
     private const val USER_AGENT_HEADER = "User-Agent"
     private const val GITHUB_HOST = "github.com"
 
@@ -42,6 +45,16 @@ object AppUpdateManager {
     suspend fun findOrDownloadLatest(context: Context): PreparedUpdate? = withContext(Dispatchers.IO) {
         try {
             updateMutex.withLock { findOrDownloadLatestLocked(context) }
+        } catch (cancellation: CancellationException) {
+            throw cancellation
+        } catch (_: Exception) {
+            null
+        }
+    }
+
+    suspend fun findDownloadedUpdate(context: Context): PreparedUpdate? = withContext(Dispatchers.IO) {
+        try {
+            updateMutex.withLock { findDownloadedUpdateLocked(context) }
         } catch (cancellation: CancellationException) {
             throw cancellation
         } catch (_: Exception) {
@@ -63,7 +76,26 @@ object AppUpdateManager {
             }
         }
 
-        return PreparedUpdate(release.versionName, apk)
+        val prepared = PreparedUpdate(release.versionName, apk)
+        rememberDownloaded(context, prepared, release.expectedSha256)
+        return prepared
+    }
+
+    private fun findDownloadedUpdateLocked(context: Context): PreparedUpdate? {
+        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        val path = prefs.getString(DOWNLOADED_APK_PATH, null) ?: return null
+        val version = prefs.getString(DOWNLOADED_VERSION, null) ?: return null
+        val expectedHash = prefs.getString(DOWNLOADED_SHA256, null) ?: return null
+        val apk = File(path)
+        if (!apk.isFile || !isNewerVersion(version, BuildConfig.VERSION_NAME) || sha256(apk) != expectedHash) {
+            prefs.edit()
+                .remove(DOWNLOADED_APK_PATH)
+                .remove(DOWNLOADED_VERSION)
+                .remove(DOWNLOADED_SHA256)
+                .apply()
+            return null
+        }
+        return PreparedUpdate(version, apk)
     }
 
     fun requestInstall(context: Context, update: PreparedUpdate) {
@@ -200,7 +232,20 @@ object AppUpdateManager {
     }
 
     private fun clearPending(context: Context) {
-        context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE).edit().clear().apply()
+        context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            .edit()
+            .remove(PENDING_APK_PATH)
+            .remove(PENDING_VERSION)
+            .apply()
+    }
+
+    private fun rememberDownloaded(context: Context, update: PreparedUpdate, expectedHash: String) {
+        context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            .edit()
+            .putString(DOWNLOADED_APK_PATH, update.apkFile.absolutePath)
+            .putString(DOWNLOADED_VERSION, update.versionName)
+            .putString(DOWNLOADED_SHA256, expectedHash)
+            .apply()
     }
 
     private fun sha256(file: File): String {

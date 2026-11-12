@@ -151,7 +151,8 @@ class MainActivity : ComponentActivity() {
             var preparedUpdate by remember { mutableStateOf<PreparedUpdate?>(null) }
 
             LaunchedEffect(Unit) {
-                preparedUpdate = AppUpdateManager.findOrDownloadLatest(this@MainActivity)
+                preparedUpdate = AppUpdateManager.findDownloadedUpdate(this@MainActivity)
+                    ?: AppUpdateManager.findOrDownloadLatest(this@MainActivity)
             }
 
             BuonaCacciaTheme(darkTheme = dark) {
