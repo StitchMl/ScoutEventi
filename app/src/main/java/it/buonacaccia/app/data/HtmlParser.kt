@@ -292,6 +292,13 @@ object HtmlParser {
                 }
         }
         if (zone == null) {
+            val headings = doc.select("h1, h2, h3").joinToString(" ") { it.text() }
+            zone = ZoneCatalog.identify(
+                headings,
+                allowFuzzy = Regex("(?i)\\bzona\\b").containsMatchIn(headings),
+            )
+        }
+        if (zone == null) {
             zone = ZoneCatalog.identify(
                 text,
                 allowFuzzy = Regex("(?i)\\bzona\\b").containsMatchIn(text),

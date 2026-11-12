@@ -286,6 +286,18 @@ class HtmlParserTest {
     }
 
     @Test
+    fun parseSubscriptions_prefersZoneMarkedHeadingOverLocationText() {
+        val html = """
+            <html><body>
+              <h2>Assemblea di Zona Milano - Convocazione</h2>
+              <p>Luogo: Bergamo</p>
+            </body></html>
+        """.trimIndent()
+
+        assertEquals("Milano", HtmlParser.parseSubscriptions(html).zone)
+    }
+
+    @Test
     fun acronymGlossary_onlyReturnsEntriesFoundInDownloadedEvents() {
         val event = BcEvent(
             id = "glossary",
