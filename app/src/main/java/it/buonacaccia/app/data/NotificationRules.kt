@@ -89,6 +89,7 @@ object NotificationRuleEngine {
         val definition = EventTypeCatalog.resolve(event.type)
         return buildSet {
             listOf(event.type, definition.key, definition.label).mapNotNullTo(this, ::normalize)
+            definition.aliases.mapNotNullTo(this, ::normalize)
             if (definition.key.startsWith("MF_AGGIORNAM_METODOLOGICO")) add("mam")
             if (definition.key.startsWith("MF_") || definition.key == "MODULO_FORMATIVO") add(MODULES)
 

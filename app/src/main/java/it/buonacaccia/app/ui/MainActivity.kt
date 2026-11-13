@@ -12,6 +12,7 @@ import android.os.Build
 import android.os.Bundle
 import android.provider.Settings
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -34,6 +35,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -79,6 +81,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -101,7 +104,6 @@ import androidx.core.net.toUri
 import it.buonacaccia.app.R
 import it.buonacaccia.app.data.BcEvent
 import it.buonacaccia.app.data.EventTypeCatalog
-import it.buonacaccia.app.data.EventTypeDefinition
 import it.buonacaccia.app.data.EventStore
 import it.buonacaccia.app.data.NotificationTypeRegionRule
 import it.buonacaccia.app.data.ZoneCatalog
@@ -274,7 +276,7 @@ private fun MainScreen(
     val subscribedIds by EventStore.subscribedIdsFlow(context).collectAsState(initial = emptySet())
 
     // "Followed only" filter (UI status).
-    var onlyFollowed by remember { mutableStateOf(false) }
+    var onlyFollowed by rememberSaveable { mutableStateOf(false) }
 
     // Preferences: types selected for notifications
     val interestedTypes by EventStore
@@ -298,31 +300,35 @@ private fun MainScreen(
         applyDeepLink(vm, deepLinkTitle)
     }
     val pullRefreshState = rememberPullToRefreshState()
+    val eventsListState = rememberLazyListState()
 
     // Multi-selection dialog types
-    var showNotificationSettings by remember { mutableStateOf(false) }
-    var showInfo by remember { mutableStateOf(initialShowInfo) }
-    var showBatteryHints by remember { mutableStateOf(initialShowBatteryHints) }
+    var showNotificationSettings by rememberSaveable { mutableStateOf(false) }
+    var showInfo by rememberSaveable { mutableStateOf(initialShowInfo) }
+    var showBatteryHints by rememberSaveable { mutableStateOf(initialShowBatteryHints) }
+
+    BackHandler(enabled = showInfo) { showInfo = false }
 
     val mutedTypes by EventStore.muteTypesFlow(context).collectAsState(initial = emptySet())
-    val canonicalInterestedTypes = remember(interestedTypes) {
-        interestedTypes.mapTo(linkedSetOf(), EventTypeCatalog::canonicalLabel)
+    val canonicalInterestedTypes = remember(interestedTypes, state.items) {
+        interestedTypes.mapTo(linkedSetOf()) { EventTypeCatalog.displayCode(it, state.items) }
     }
-    val canonicalMutedTypes = remember(mutedTypes) {
-        mutedTypes.mapTo(linkedSetOf(), EventTypeCatalog::canonicalLabel)
+    val canonicalMutedTypes = remember(mutedTypes, state.items) {
+        mutedTypes.mapTo(linkedSetOf()) { EventTypeCatalog.displayCode(it, state.items) }
     }
-    val canonicalTypeRegionRules = remember(typeRegionRules) {
+    val canonicalTypeRegionRules = remember(typeRegionRules, state.items) {
         typeRegionRules
-            .groupBy { EventTypeCatalog.canonicalLabel(it.type) }
+            .groupBy { EventTypeCatalog.displayCode(it.type, state.items) }
             .map { (type, rules) -> NotificationTypeRegionRule(type, rules.flatMap { it.regions }.toSet()) }
     }
-    val availableTypes = remember(state.items, canonicalInterestedTypes, canonicalMutedTypes, canonicalTypeRegionRules) {
-        buildSet {
-            EventTypeCatalog.definitionsFor(state.items).mapTo(this, EventTypeDefinition::label)
+    val availableTypes = remember(state.items, canonicalInterestedTypes, canonicalMutedTypes) {
+        buildList {
+            addAll(EventTypeCatalog.notificationCodes)
+            state.items.mapNotNullTo(this) { it.type?.trim()?.takeIf(String::isNotEmpty) }
             addAll(canonicalInterestedTypes)
             addAll(canonicalMutedTypes)
-            canonicalTypeRegionRules.mapTo(this) { it.type }
-        }.sortedWith(String.CASE_INSENSITIVE_ORDER)
+        }.distinctBy { EventTypeCatalog.resolve(it).key }
+            .sortedWith(String.CASE_INSENSITIVE_ORDER)
     }
     val availableZones = remember { ZoneCatalog.allNames() }
 
@@ -389,6 +395,7 @@ private fun MainScreen(
                 onUnitChange = vm::onUnitChange,
                 selectedType = state.type,
                 availableTypeFilters = vm.typeFilters,
+                availableEvents = state.items,
                 onTypeChange = vm::onTypeChange,
                 onlyOpen = state.onlyOpen,
                 onOnlyOpenChange = vm::onOnlyOpenChange,
@@ -438,6 +445,7 @@ private fun MainScreen(
                     }
                 } else {
                     LazyColumn(
+                        state = eventsListState,
                         modifier = Modifier.fillMaxSize(),
                         contentPadding = PaddingValues(12.dp),
                         verticalArrangement = Arrangement.spacedBy(12.dp)
@@ -470,6 +478,7 @@ private fun MainScreen(
             interestedZones = interestedZones,
             typeRegionRules = canonicalTypeRegionRules,
             availableTypes = availableTypes,
+            availableEvents = state.items,
             availableRegions = vm.regions,
             availableZones = availableZones,
             onDismiss = { showNotificationSettings = false },
@@ -543,7 +552,9 @@ private fun SearchBarField(
     value: String,
     onValueChange: (String) -> Unit
 ) {
-    var tf by remember { mutableStateOf(TextFieldValue(value)) }
+    var tf by rememberSaveable(stateSaver = TextFieldValue.Saver) {
+        mutableStateOf(TextFieldValue(value))
+    }
     LaunchedEffect(value) { if (value != tf.text) tf = tf.copy(text = value) }
 
     OutlinedTextField(
@@ -587,13 +598,14 @@ private fun FiltersRow(
     onUnitChange: (UnitFilter) -> Unit,
     selectedType: TypeFilter,
     availableTypeFilters: List<TypeFilter>,
+    availableEvents: List<BcEvent>,
     onTypeChange: (TypeFilter) -> Unit,
     onlyOpen: Boolean,
     onOnlyOpenChange: (Boolean) -> Unit,
     onlyFollowed: Boolean,
     onOnlyFollowedChange: (Boolean) -> Unit
 ) {
-    var explainedType by remember { mutableStateOf<TypeFilter?>(null) }
+    var explainedTypeCode by rememberSaveable { mutableStateOf<String?>(null) }
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -724,7 +736,7 @@ private fun FiltersRow(
                         DropdownMenuItem(
                             text = { Text(value.label) },
                             trailingIcon = if (value.key == null) null else ({
-                                IconButton(onClick = { explainedType = value }) {
+                                IconButton(onClick = { explainedTypeCode = value.label }) {
                                     Icon(Icons.Default.Info, contentDescription = "Spiega ${value.label}")
                                 }
                             }),
@@ -735,14 +747,14 @@ private fun FiltersRow(
             }
         }
     }
-    explainedType?.let { type ->
+    explainedTypeCode?.let { type ->
         AlertDialog(
-            onDismissRequest = { explainedType = null },
+            onDismissRequest = { explainedTypeCode = null },
             confirmButton = {
-                TextButton(onClick = { explainedType = null }) { Text("Chiudi") }
+                TextButton(onClick = { explainedTypeCode = null }) { Text("Chiudi") }
             },
-            title = { Text(type.label) },
-            text = { Text(EventTypeCatalog.resolve(type.label).description) },
+            title = { Text(type) },
+            text = { Text(EventTypeCatalog.explanation(type, availableEvents)) },
         )
     }
     Row(

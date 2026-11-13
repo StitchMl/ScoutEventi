@@ -13,8 +13,8 @@ data class TypeFilter(val key: String?, val label: String) {
     companion object {
         val TUTTI = TypeFilter(null, "Tutti")
 
-        fun catalog(definition: EventTypeDefinition): TypeFilter =
-            TypeFilter(definition.key, definition.label)
+        fun catalog(definition: EventTypeDefinition, displayCode: String = definition.label): TypeFilter =
+            TypeFilter(definition.key, displayCode)
 
         fun exact(type: String): TypeFilter = catalog(EventTypeCatalog.resolve(type))
     }

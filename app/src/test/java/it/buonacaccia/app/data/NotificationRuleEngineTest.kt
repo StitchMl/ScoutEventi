@@ -7,6 +7,30 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class NotificationRuleEngineTest {
+    @Test
+    fun preferredDisplayAliasMatchesTheEventTypeIdentity() {
+        val event = event(type = "EPPPI", region = "Lazio")
+
+        assertTrue(
+            NotificationRuleEngine.shouldNotify(
+                event,
+                NotificationPreferences(allowedTypes = setOf("EPI")),
+            ),
+        )
+        assertFalse(
+            NotificationRuleEngine.shouldNotify(
+                event,
+                NotificationPreferences(mutedTypes = setOf("EPI")),
+            ),
+        )
+        assertTrue(
+            NotificationRuleEngine.shouldNotify(
+                event(type = "MF-Terzo settore", region = "Lazio"),
+                NotificationPreferences(allowedTypes = setOf("MF-TS")),
+            ),
+        )
+    }
+
 
     @Test
     fun shouldNotify_appliesCategoryFilters() {

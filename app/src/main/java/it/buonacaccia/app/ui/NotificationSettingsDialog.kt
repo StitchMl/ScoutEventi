@@ -15,7 +15,9 @@ import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
@@ -49,6 +51,8 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.Saver
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -60,6 +64,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import it.buonacaccia.app.data.NotificationTypeRegionRule
+import it.buonacaccia.app.data.BcEvent
 import it.buonacaccia.app.data.EventTypeCatalog
 import it.buonacaccia.app.data.ZoneCatalog
 
@@ -80,6 +85,7 @@ internal fun NotificationSettingsDialog(
     interestedZones: Set<String>,
     typeRegionRules: List<NotificationTypeRegionRule>,
     availableTypes: List<String>,
+    availableEvents: List<BcEvent>,
     availableRegions: List<String>,
     availableZones: List<String>,
     onDismiss: () -> Unit,
@@ -91,30 +97,53 @@ internal fun NotificationSettingsDialog(
         rules: List<NotificationTypeRegionRule>,
     ) -> Unit,
 ) {
-    var page by remember { mutableStateOf(NotificationSettingsPage.OVERVIEW) }
-    var query by remember { mutableStateOf("") }
-    var mode by remember(interestedTypes, mutedTypes) {
+    var page by rememberSaveable { mutableStateOf(NotificationSettingsPage.OVERVIEW) }
+    var query by rememberSaveable { mutableStateOf("") }
+    var mode by rememberSaveable(interestedTypes, mutedTypes) {
         mutableStateOf(initialMode(mutedTypes))
     }
-    var selectedTypes by remember(interestedTypes, mutedTypes) {
+    var selectedTypes by rememberSaveable(
+        interestedTypes,
+        mutedTypes,
+        stateSaver = stringSetStateSaver,
+    ) {
         mutableStateOf(initialTypes(interestedTypes, mutedTypes))
     }
-    var selectedRegions by remember(interestedRegions) { mutableStateOf(interestedRegions) }
-    var selectedZones by remember(interestedZones) {
+    var selectedRegions by rememberSaveable(
+        interestedRegions,
+        stateSaver = stringSetStateSaver,
+    ) { mutableStateOf(interestedRegions) }
+    var selectedZones by rememberSaveable(
+        interestedZones,
+        stateSaver = stringSetStateSaver,
+    ) {
         mutableStateOf(interestedZones.mapNotNull(ZoneCatalog::canonicalName).toSet())
     }
-    var rulesByType by remember(typeRegionRules) {
+    var rulesByType by rememberSaveable(
+        typeRegionRules,
+        stateSaver = typeRulesStateSaver,
+    ) {
         mutableStateOf(typeRegionRules.associate { it.type to it.regions })
     }
-    var activeType by remember { mutableStateOf<String?>(null) }
-    var explainedType by remember { mutableStateOf<String?>(null) }
+    var activeType by rememberSaveable { mutableStateOf<String?>(null) }
+    var explainedType by rememberSaveable { mutableStateOf<String?>(null) }
 
     val regions = remember(availableRegions) { availableRegions.filterNot { it == "Tutte" } }
     val pageTitle = pageTitle(page, activeType)
+    val overviewListState = rememberLazyListState()
+    val typesListState = rememberLazyListState()
+    val regionsListState = rememberLazyListState()
+    val zonesListState = rememberLazyListState()
+    val typeRulesListState = rememberLazyListState()
+    val typeRuleDetailListState = rememberLazyListState()
 
     fun navigate(destination: NotificationSettingsPage) {
         query = ""
         page = destination
+    }
+
+    fun navigateBack() {
+        if (page == NotificationSettingsPage.OVERVIEW) onDismiss() else navigate(backDestination(page))
     }
 
     fun regionsUsedByNotifications(): Set<String> =
@@ -132,7 +161,7 @@ internal fun NotificationSettingsDialog(
     }
 
     Dialog(
-        onDismissRequest = onDismiss,
+        onDismissRequest = ::navigateBack,
         properties = DialogProperties(
             usePlatformDefaultWidth = false,
             decorFitsSystemWindows = false,
@@ -147,9 +176,7 @@ internal fun NotificationSettingsDialog(
                         navigationIcon = {
                             if (page != NotificationSettingsPage.OVERVIEW) {
                                 IconButton(onClick = {
-                                    navigate(
-                                        backDestination(page),
-                                    )
+                                    navigateBack()
                                 }) {
                                     Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Indietro")
                                 }
@@ -192,7 +219,7 @@ internal fun NotificationSettingsDialog(
             ) { padding ->
                 Column(modifier = Modifier.fillMaxSize().padding(padding)) {
                     when (page) {
-                        NotificationSettingsPage.OVERVIEW -> LazyColumn {
+                        NotificationSettingsPage.OVERVIEW -> LazyColumn(state = overviewListState) {
                             item {
                                 Surface(
                                     modifier = Modifier
@@ -302,6 +329,7 @@ internal fun NotificationSettingsDialog(
                             }
                             SearchField(query, "Cerca tipo", onQueryChange = { query = it })
                             SelectionList(
+                                state = typesListState,
                                 values = availableTypes.filterBy(query),
                                 selected = selectedTypes,
                                 onToggle = { selectedTypes = selectedTypes.toggle(it) },
@@ -312,6 +340,7 @@ internal fun NotificationSettingsDialog(
                         NotificationSettingsPage.REGIONS -> {
                             SearchField(query, "Cerca regione", onQueryChange = { query = it })
                             SelectionList(
+                                state = regionsListState,
                                 values = regions.filterBy(query),
                                 selected = selectedRegions,
                                 onToggle = {
@@ -333,6 +362,7 @@ internal fun NotificationSettingsDialog(
                             val zoneOptions = availableZones.filter { it in allowedByRegion }
                                 .sortedWith(String.CASE_INSENSITIVE_ORDER)
                             SelectionList(
+                                state = zonesListState,
                                 values = zoneOptions,
                                 selected = selectedZones,
                                 onToggle = { selectedZones = selectedZones.toggle(it) },
@@ -347,7 +377,7 @@ internal fun NotificationSettingsDialog(
                                 style = MaterialTheme.typography.bodyMedium,
                             )
                             SearchField(query, "Cerca tipo", onQueryChange = { query = it })
-                            LazyColumn {
+                            LazyColumn(state = typeRulesListState) {
                                 items(selectedTypes.sorted().filterBy(query), key = { it }) { type ->
                                     NotificationSettingsRow(
                                         title = type,
@@ -364,7 +394,7 @@ internal fun NotificationSettingsDialog(
                         NotificationSettingsPage.TYPE_RULE_DETAIL -> {
                             val type = activeType ?: return@Column
                             val configured = rulesByType[type]
-                            LazyColumn {
+                            LazyColumn(state = typeRuleDetailListState) {
                                 item {
                                     RuleModeRow("Eredita regioni predefinite", configured == null) {
                                         rulesByType = rulesByType - type
@@ -411,7 +441,7 @@ internal fun NotificationSettingsDialog(
                 TextButton(onClick = { explainedType = null }) { Text("Chiudi") }
             },
             title = { Text(type) },
-            text = { Text(EventTypeCatalog.resolve(type).description) },
+            text = { Text(EventTypeCatalog.explanation(type, availableEvents)) },
         )
     }
 }
@@ -504,12 +534,13 @@ private fun SearchField(query: String, label: String, onQueryChange: (String) ->
 
 @Composable
 private fun SelectionList(
+    state: LazyListState,
     values: List<String>,
     selected: Set<String>,
     onToggle: (String) -> Unit,
     onInfo: ((String) -> Unit)? = null,
 ) {
-    LazyColumn {
+    LazyColumn(state = state) {
         items(values, key = { it }) { value ->
             val checked = value in selected
             ListItem(
@@ -597,3 +628,32 @@ private fun savedRules(
     return rules.filterKeys { it in selectedTypes }
         .map { (type, regions) -> NotificationTypeRegionRule(type, regions) }
 }
+
+private val stringSetStateSaver = Saver<Set<String>, ArrayList<String>>(
+    save = { ArrayList(it) },
+    restore = { it.toSet() },
+)
+
+private val typeRulesStateSaver =
+    Saver<Map<String, Set<String>>, ArrayList<String>>(
+        save = { rules ->
+            ArrayList<String>().apply {
+                rules.forEach { (type, regions) ->
+                    add(type)
+                    add(regions.size.toString())
+                    addAll(regions)
+                }
+            }
+        },
+        restore = { saved ->
+            val restored = linkedMapOf<String, Set<String>>()
+            var index = 0
+            while (index < saved.size) {
+                val type = saved[index++]
+                val count = saved[index++].toInt()
+                restored[type] = saved.subList(index, index + count).toSet()
+                index += count
+            }
+            restored
+        },
+    )

@@ -21,6 +21,19 @@ object EventTypeCatalog {
     private const val FAMILY_LEADERS = "Formazione capi"
     private const val FAMILY_MODULES = "Moduli formativi"
     private const val CIVIL_PROTECTION = "Protezione civile"
+    private const val CFM_EG = "CFM E/G"
+    private const val CFM_LC = "CFM L/C"
+    private const val CFM_RS = "CFM R/S"
+    private const val CAPI_GRUPPO = "Capi Gruppo"
+
+    val notificationCodes: Set<String> = linkedSetOf(
+        "AltroReg", "AltroRS", "AssReg", "AssZona", "CapiSq", "CCG", "CFA",
+        CFM_EG, CFM_LC, CFM_RS, "CFT", "ConsReg", "EPPPI", "MF-AA",
+        "MF-AB", "MF-AM E/G", "MF-AM L/C", "MF-AM R/S", "MF-CG", "MF-CT",
+        "MF-EVC", "MF-Form", "MF-FS", "MF-INTER", "MF-PAS", "MF-PC", "MF-PT",
+        "MF-QA", "MF-TE", "MF-TS", "MF-VPC", "MF-VPCFI", "Part", "PO", "ROSS",
+        "RTT", "StartAssit", "WebiComp",
+    )
 
     private fun entry(
         key: String,
@@ -66,11 +79,11 @@ object EventTypeCatalog {
         simple("CAPI_IN_L_C", "Eventi per capi L/C", FAMILY_LEADERS, "L/C", "Capi in L/C"),
         simple("CAPI_IN_R_S", "Eventi per capi R/S", FAMILY_LEADERS, "R/S", "Capi in R/S"),
         entry("CAPISQ", "Capi Squadriglia", "Campo o evento per capi squadriglia", "Ragazzi", "E/G", setOf("CapiSq", "Capi Squadriglia", "CSq", "C.Sq.")),
-        simple("CCG", "Campo capi Gruppo", FAMILY_LEADERS, "Capi Gruppo", "CCG"),
+        simple("CCG", "Campo capi Gruppo", FAMILY_LEADERS, CAPI_GRUPPO, "CCG"),
         entry("CFA", "CFA", "Campo di formazione associativa", FAMILY_LEADERS, "Trasversale", setOf("CFA")),
-        entry("CFM_E_G", "CFM E/G", "Campo di formazione metodologica E/G", FAMILY_LEADERS, "E/G", setOf("CFM E/G")),
-        entry("CFM_L_C", "CFM L/C", "Campo di formazione metodologica L/C", FAMILY_LEADERS, "L/C", setOf("CFM L/C")),
-        entry("CFM_R_S", "CFM R/S", "Campo di formazione metodologica R/S", FAMILY_LEADERS, "R/S", setOf("CFM R/S")),
+        entry("CFM_E_G", CFM_EG, "Campo di formazione metodologica E/G", FAMILY_LEADERS, "E/G", setOf(CFM_EG)),
+        entry("CFM_L_C", CFM_LC, "Campo di formazione metodologica L/C", FAMILY_LEADERS, "L/C", setOf(CFM_LC)),
+        entry("CFM_R_S", CFM_RS, "Campo di formazione metodologica R/S", FAMILY_LEADERS, "R/S", setOf(CFM_RS)),
         entry("CFT", "CFT", "Campo di formazione tirocinanti", FAMILY_LEADERS, "Trasversale", setOf("CFT")),
         simple("COMPETENZA", "Campo di competenza", "Ragazzi", "E/G", "Competenza"),
         simple("CONSIGLIO_GENERALE", "Consiglio generale", FAMILY_GOVERNANCE, "Nazionale", "Consiglio generale"),
@@ -95,7 +108,7 @@ object EventTypeCatalog {
         entry("MF_AGGIORNAM_METODOLOGICO_R_S", "MAM R/S", "Modulo di aggiornamento metodologico R/S", FAMILY_MODULES, "R/S", setOf("MF-Aggiornam. metodologico R/S", "MF-AM R/S", "MAM R/S")),
         simple("MF_APPROFONDIMENTO_BIBLICO", "MF - Approfondimento biblico", FAMILY_MODULES, "Fede", "MF-Approfondimento Biblico", "MF-AB"),
         entry("MF_ASS_ANIMATORI_DI_GRUPPO", "MF - Assistenti/animatori di gruppo", "Interpretazione del codice da verificare nel dettaglio dell’evento", FAMILY_MODULES, "Gruppo", setOf("MF-Ass./Animatori di gruppo")),
-        simple("MF_CAPI_GRUPPO", "MF - Capi Gruppo", FAMILY_MODULES, "Capi Gruppo", "MF-Capi Gruppo", "MF-CG"),
+        simple("MF_CAPI_GRUPPO", "MF - Capi Gruppo", FAMILY_MODULES, CAPI_GRUPPO, "MF-Capi Gruppo", "MF-CG"),
         simple("MF_COMPETENZE_TECNICHE", "MF - Competenze tecniche", FAMILY_MODULES, "Trasversale", "MF-Competenze tecniche", "MF-CT"),
         simple("MF_FEDE_SPIRITUALITA", "MF - Fede e spiritualità", FAMILY_MODULES, "Fede", "MF-Fede/Spiritualità", "MF-Fede", "MF-FS"),
         entry("MF_HACCP", "MF - HACCP", "Modulo su igiene e sicurezza alimentare", FAMILY_MODULES, "Sicurezza", setOf("MF-HACCP")),
@@ -106,7 +119,7 @@ object EventTypeCatalog {
         simple("MF_PROTEZIONE_CIVILE", "MF - Protezione civile", FAMILY_MODULES, CIVIL_PROTECTION, "MF-Protezione civile", "MF-PC"),
         simple("MF_QUADRI_ASSOCIATIVI", "MF - Quadri associativi", FAMILY_MODULES, "Quadri", "MF-Quadri associativi", "MF-QA"),
         simple("MF_TEMATICHE_EDUCATIVE", "MF - Tematiche educative", FAMILY_MODULES, "Trasversale", "MF-Tematiche educative", "MF-TE"),
-        simple("MF_TERZO_SETTORE", "MF - Terzo settore", FAMILY_MODULES, "Trasversale", "MF-Terzo settore"),
+        simple("MF_TERZO_SETTORE", "MF - Terzo settore", FAMILY_MODULES, "Trasversale", "MF-Terzo settore", "MF-TS"),
         simple("MF_TUTELA_MINORI", "MF - Tutela dei minori", FAMILY_MODULES, "Tutela", "MF-Tutela minori"),
         simple("MF_VITA_CRISTIANA", "MF - Vita cristiana", FAMILY_MODULES, "Fede", "MF-Vita Cristiana", "MF-EVC"),
         simple("MF_VOLONTARI_PC", "MF - Volontari di protezione civile", FAMILY_MODULES, CIVIL_PROTECTION, "MF-Volontari PC", "MF-VPC"),
@@ -160,6 +173,67 @@ object EventTypeCatalog {
     fun canonicalLabel(value: String): String = resolve(value).let { definition ->
         if (definition.known) definition.label else value.trim()
     }
+
+    fun displayCode(value: String, events: Iterable<BcEvent>): String {
+        val definition = resolve(value)
+        val key = definition.key
+        return events.asSequence()
+            .mapNotNull { it.type?.trim()?.takeIf(String::isNotEmpty) }
+            .firstOrNull { resolve(it).key == key }
+            ?: preferredCode(definition)
+    }
+
+    fun preferredCode(definition: EventTypeDefinition): String {
+        if (!definition.known) return definition.label
+        val aliases = definition.aliases.filter(String::isNotBlank)
+        val candidates = if (definition.family == FAMILY_MODULES) {
+            aliases.filter { it.startsWith("MF", ignoreCase = true) }.ifEmpty { aliases }
+        } else {
+            aliases
+        }
+        return candidates.minWithOrNull(compareBy<String> { it.length }.thenBy { it.lowercase() })
+            ?: definition.label
+    }
+
+    fun explanation(value: String, events: Iterable<BcEvent> = emptyList()): String {
+        val definition = resolve(value)
+        if (definition.known) {
+            return definition.description
+                .replace(Regex("^MF\\s*-\\s*", RegexOption.IGNORE_CASE), "Modulo formativo – ")
+        }
+
+        inferredTitle(value, events)?.let { return "Significato ipotizzato dal titolo: $it" }
+        val expanded = value.split(Regex("[^A-Za-z0-9/]+"))
+            .mapNotNull { knownAcronyms[it.uppercase(Locale.ROOT)] }
+            .distinct()
+        return if (expanded.isNotEmpty()) {
+            "Significato ipotizzato dalle sigle: ${expanded.joinToString(" · ")}"
+        } else {
+            definition.description
+        }
+    }
+
+    private fun inferredTitle(value: String, events: Iterable<BcEvent>): String? = events
+        .firstOrNull { it.type.equals(value, ignoreCase = true) }
+        ?.title
+        ?.substringBefore(" - ")
+        ?.trim()
+        ?.takeIf { it.isNotEmpty() && !it.equals(value, ignoreCase = true) }
+        ?.take(120)
+
+    private val knownAcronyms = mapOf(
+        "MF" to "Modulo formativo",
+        "MAM" to "Modulo di aggiornamento metodologico",
+        "CFM" to "Campo di formazione metodologica",
+        "CFA" to "Campo di formazione associativa",
+        "CFT" to "Campo di formazione tirocinanti",
+        "PC" to "Protezione civile",
+        "CG" to CAPI_GRUPPO,
+        "QA" to "Quadri associativi",
+        "E/G" to "Esploratori e Guide",
+        "L/C" to "Lupetti e Coccinelle",
+        "R/S" to "Rover e Scolte",
+    )
 
     private fun normalize(value: String): String = Normalizer.normalize(value, Normalizer.Form.NFD)
         .replace(Regex("\\p{M}+"), "")

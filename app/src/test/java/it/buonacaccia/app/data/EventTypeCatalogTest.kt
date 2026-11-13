@@ -11,6 +11,8 @@ class EventTypeCatalogTest {
         assertEquals(78, EventTypeCatalog.knownTypes.size)
         assertTrue(EventTypeCatalog.knownTypes.all { it.key.isNotBlank() && it.aliases.isNotEmpty() })
         assertEquals(77, EventTypeCatalog.knownTypes.count { it.key != "WEBICOMP" })
+        assertEquals(38, EventTypeCatalog.notificationCodes.size)
+        assertTrue("WebiComp" in EventTypeCatalog.notificationCodes)
     }
 
     @Test
@@ -39,5 +41,51 @@ class EventTypeCatalogTest {
     fun savedAliasMigratesToCurrentLabel() {
         assertEquals("MAM E/G", EventTypeCatalog.canonicalLabel("MF-AM E/G"))
         assertEquals("MAM", EventTypeCatalog.canonicalLabel("MAM"))
+    }
+
+    @Test
+    fun displayCodeUsesTheValueReceivedFromBuonaCaccia() {
+        val event = BcEvent(
+            id = "1",
+            title = "Evento",
+            detailUrl = "https://example.test",
+            type = "MF-EVC",
+            region = null,
+            startDate = null,
+            endDate = null,
+            fee = null,
+            location = null,
+            enrolled = null,
+            status = null,
+        )
+
+        assertEquals("MF-EVC", EventTypeCatalog.displayCode("MF - Vita cristiana", listOf(event)))
+        assertEquals("Modulo formativo – Vita cristiana", EventTypeCatalog.explanation("MF-EVC"))
+    }
+
+    @Test
+    fun unknownTypeMeaningIsInferredFromItsEventTitle() {
+        val event = BcEvent(
+            id = "2",
+            title = "MF-Nuove competenze - Primo incontro",
+            detailUrl = "https://example.test",
+            type = "MF-NC",
+            region = null,
+            startDate = null,
+            endDate = null,
+            fee = null,
+            location = null,
+            enrolled = null,
+            status = null,
+        )
+
+        assertEquals(
+            "Significato ipotizzato dal titolo: MF-Nuove competenze",
+            EventTypeCatalog.explanation("MF-NC", listOf(event)),
+        )
+        assertEquals(
+            "Significato ipotizzato dalle sigle: Modulo formativo",
+            EventTypeCatalog.explanation("MF-XYZ"),
+        )
     }
 }
