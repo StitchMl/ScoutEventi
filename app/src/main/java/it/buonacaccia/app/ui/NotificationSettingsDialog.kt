@@ -21,12 +21,14 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Category
+import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material.icons.filled.NotificationsActive
 import androidx.compose.material.icons.filled.Public
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material3.Button
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.FilterChip
@@ -58,6 +60,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import it.buonacaccia.app.data.NotificationTypeRegionRule
+import it.buonacaccia.app.data.EventTypeCatalog
 import it.buonacaccia.app.data.ZoneCatalog
 
 private enum class NotificationSettingsPage { OVERVIEW, TYPES, REGIONS, ZONES, TYPE_RULES, TYPE_RULE_DETAIL }
@@ -104,6 +107,7 @@ internal fun NotificationSettingsDialog(
         mutableStateOf(typeRegionRules.associate { it.type to it.regions })
     }
     var activeType by remember { mutableStateOf<String?>(null) }
+    var explainedType by remember { mutableStateOf<String?>(null) }
 
     val regions = remember(availableRegions) { availableRegions.filterNot { it == "Tutte" } }
     val pageTitle = pageTitle(page, activeType)
@@ -301,6 +305,7 @@ internal fun NotificationSettingsDialog(
                                 values = availableTypes.filterBy(query),
                                 selected = selectedTypes,
                                 onToggle = { selectedTypes = selectedTypes.toggle(it) },
+                                onInfo = { explainedType = it },
                             )
                         }
 
@@ -399,6 +404,16 @@ internal fun NotificationSettingsDialog(
             }
         }
     }
+    explainedType?.let { type ->
+        AlertDialog(
+            onDismissRequest = { explainedType = null },
+            confirmButton = {
+                TextButton(onClick = { explainedType = null }) { Text("Chiudi") }
+            },
+            title = { Text(type) },
+            text = { Text(EventTypeCatalog.resolve(type).description) },
+        )
+    }
 }
 
 @Composable
@@ -488,13 +503,27 @@ private fun SearchField(query: String, label: String, onQueryChange: (String) ->
 }
 
 @Composable
-private fun SelectionList(values: List<String>, selected: Set<String>, onToggle: (String) -> Unit) {
+private fun SelectionList(
+    values: List<String>,
+    selected: Set<String>,
+    onToggle: (String) -> Unit,
+    onInfo: ((String) -> Unit)? = null,
+) {
     LazyColumn {
         items(values, key = { it }) { value ->
             val checked = value in selected
             ListItem(
                 headlineContent = { Text(value) },
-                trailingContent = { Checkbox(checked, null) },
+                trailingContent = {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        onInfo?.let { showInfo ->
+                            IconButton(onClick = { showInfo(value) }) {
+                                Icon(Icons.Default.Info, contentDescription = "Spiega $value")
+                            }
+                        }
+                        Checkbox(checked, null)
+                    }
+                },
                 colors = androidx.compose.material3.ListItemDefaults.colors(
                     containerColor = if (checked) MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.55f)
                     else MaterialTheme.colorScheme.surface,

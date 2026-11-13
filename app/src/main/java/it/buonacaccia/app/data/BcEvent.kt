@@ -22,75 +22,64 @@ data class BcEvent(
 )
 
 object EventAcronymGlossary {
-    private val definitions = linkedMapOf(
-        "L/C" to "Lupetti e Coccinelle",
-        "E/G" to "Esploratori e Guide",
-        "R/S" to "Rover e Scolte",
-        "AE" to "Assistente Ecclesiastico",
-        "BC" to "BuonaCaccia",
-        "CdA" to "Consiglio degli Anziani",
-        "CdL" to "Consiglio della Legge",
-        "CP" to "Capo Pattuglia",
-        "CSq" to "Capo Squadriglia",
-        "EPI" to "Evento a Partecipazione Individuale",
-        "CFT" to "Campo di Formazione Tirocinanti",
-        "CFM" to "Campo di Formazione Metodologica",
-        "CFA" to "Campo di Formazione Associativa",
+    private val typeMeanings = mapOf(
+        "AltroReg" to "Altro evento regionale",
+        "AltroRS" to "Altre attività R/S",
+        "AssReg" to "Assemblea regionale",
+        "AssZona" to "Assemblea di Zona",
+        "CapiSq" to "Evento per capi squadriglia E/G",
         "CCG" to "Campo per Capi Gruppo",
-        "MF" to "Modulo Formativo",
-        "MAM" to "Modulo di Aggiornamento Metodologico",
-        "AM" to "Aggiornamento Metodologico",
-        "PT" to "Percorso di Tirocinio",
-        "INTER" to "Interbranca",
-        "AA" to "Approfondimento Associativo",
-        "FS" to "Fede e Spiritualità",
-        "CG" to "Capi Gruppo",
-        "QA" to "Quadri Associativi",
-        "TE" to "Tematiche Educative",
-        "RTT" to "Regional Training Team",
+        "CFA" to "Campo di Formazione Associativa",
+        "CFM E/G" to "Campo di Formazione Metodologica E/G",
+        "CFM L/C" to "Campo di Formazione Metodologica L/C",
+        "CFM R/S" to "Campo di Formazione Metodologica R/S",
+        "CFT" to "Campo di Formazione Tirocinanti",
+        "ConsReg" to "Consiglio regionale",
+        "EPPPI" to "Evento di Progressione Personale a Partecipazione Individuale",
+        "MF-AA" to "Modulo formativo di approfondimento associativo",
+        "MF-AB" to "Modulo formativo di approfondimento biblico",
+        "MF-AM E/G" to "Modulo di aggiornamento metodologico E/G",
+        "MF-AM L/C" to "Modulo di aggiornamento metodologico L/C",
+        "MF-AM R/S" to "Modulo di aggiornamento metodologico R/S",
+        "MF-CG" to "Modulo formativo per Capi Gruppo",
+        "MF-CT" to "Modulo formativo sulle competenze tecniche",
+        "MF-EVC" to "Modulo formativo sulla vita cristiana",
+        "MF-Form" to "Modulo formativo per formatori",
+        "MF-FS" to "Modulo formativo su fede e spiritualità",
+        "MF-INTER" to "Modulo formativo interbranca",
+        "MF-PAS" to "Modulo su percorsi associativi specifici",
+        "MF-PC" to "Modulo formativo di protezione civile",
+        "MF-PT" to "Modulo formativo sul percorso di tirocinio",
+        "MF-QA" to "Modulo formativo per quadri associativi",
+        "MF-TE" to "Modulo formativo su tematiche educative",
+        "MF-TS" to "Modulo formativo sul Terzo settore",
+        "MF-VPC" to "Modulo per volontari di protezione civile",
+        "MF-VPCFI" to "Modulo per volontari PC formati e informati, D.Lgs. 81/08",
+        "Part" to "Evento per partenti R/S",
         "PO" to "Piccole Orme",
-        "FA" to "sigla usata dall’organizzatore; espansione non pubblicata su BuonaCaccia",
-        "EMI" to "sigla territoriale usata nei titoli; espansione non pubblicata su BuonaCaccia",
-        "ROSS" to "Route d’Orientamento alla Scelta di Servizio",
-        "EPPPI" to "Eventi di Progressione Personale a Partecipazione Individuale",
-        "PC" to "Protezione Civile",
-        "CAEX" to "campo per capi da esperienze extra-associative; espansione da verificare",
-        "CAM" to "Campo di Aggiornamento Metodologico",
-        "HACCP" to "igiene e sicurezza alimentare",
-        "IABZ" to "incaricato alla branca di Zona",
-        "IABR" to "incaricato alla branca regionale",
-        "IABN" to "incaricato alla branca nazionale",
-        "RdZ" to "Responsabile di Zona",
-        "IdZ" to "Incaricato di Zona",
-        "IdR" to "Incaricato regionale",
-        "PdC" to "Progetto del Capo",
-        "Fo.Ca." to "Formazione Capi",
-        "Co.Ca." to "Comunità Capi",
-        "II.RR." to "Incaricati Regionali",
+        "ROSS" to "Route di Orientamento alla Scelta di Servizio",
+        "RTT" to "Regional Training Team",
+        "StartAssit" to "Evento Start Assistant per formatori",
     )
 
     fun entriesFor(events: Iterable<BcEvent>): List<Pair<String, String>> {
-        val text = events.joinToString(" ") { listOfNotNull(it.type, it.title).joinToString(" ") }
-        val documented = definitions.filterKeys { acronym ->
-            Regex("(?i)(?<![\\p{L}\\p{N}])${Regex.escape(acronym)}(?![\\p{L}\\p{N}])")
-                .containsMatchIn(text)
-        }.toList()
-        val documentedKeys = documented.map { it.first.lowercase() }.toSet()
-        val unknown = ACRONYM.findAll(text)
-            .map { it.value.trim('.', '/', '-') }
-            .filter { it.length <= 6 || it.any { char -> char in "./-" } }
-            .filter { it.lowercase() !in documentedKeys && it !in IGNORED_WORDS }
-            .distinct()
-            .sorted()
-            .map { it to "Sigla non documentata nel catalogo: verifica il dettaglio dell’evento" }
-            .toList()
-        return documented + unknown
+        val eventList = events.toList()
+        return eventList
+            .mapNotNull { it.type?.trim()?.takeIf(String::isNotEmpty) }
+            .distinctBy(String::lowercase)
+            .sortedWith(String.CASE_INSENSITIVE_ORDER)
+            .map { type -> type to (typeMeanings[type] ?: inferMeaning(type, eventList)) }
     }
 
-    private val ACRONYM = Regex("(?<![\\p{L}\\p{N}])[A-ZÀ-ÖØ-Þ][A-ZÀ-ÖØ-Þ0-9./-]{1,11}(?![\\p{L}\\p{N}])")
-    private val IGNORED_WORDS = setOf(
-        "AGESCI", "ALTRO", "CAMPO", "CAPI", "EVENTO", "FORMAZIONE", "MODULO", "REGIONALE",
-    )
+    private fun inferMeaning(type: String, events: List<BcEvent>): String {
+        val definition = EventTypeCatalog.resolve(type)
+        if (definition.known) return definition.description
+        return events.firstOrNull { it.type.equals(type, ignoreCase = true) }
+            ?.title
+            ?.substringBefore(" - ")
+            ?.takeIf { it.length > type.length }
+            ?: "Tipologia BuonaCaccia $type"
+    }
 }
 
 fun BcEvent.guessZone(): String? {
