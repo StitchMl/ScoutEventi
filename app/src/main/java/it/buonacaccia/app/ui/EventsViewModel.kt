@@ -161,8 +161,11 @@ class EventsViewModel(
     }
 
     val typeFilters: List<TypeFilter>
-        get() = listOf(TypeFilter.TUTTI) + EventTypeCatalog.definitionsFor(state.items)
-            .map(TypeFilter::catalog)
+        get() = listOf(TypeFilter.TUTTI) + state.items
+            .mapNotNull { event -> event.type?.trim()?.takeIf(String::isNotEmpty) }
+            .distinctBy { EventTypeCatalog.resolve(it).key }
+            .map { code -> TypeFilter.catalog(EventTypeCatalog.resolve(code), code) }
+            .sortedBy { it.label.lowercase() }
 
     val filtered: List<BcEvent>
         get() = EventFiltering.filter(state.items, state)
