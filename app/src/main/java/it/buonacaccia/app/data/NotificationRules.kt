@@ -19,8 +19,7 @@ data class NotificationPreferences(
 
 object NotificationRuleEngine {
     fun shouldNotify(event: BcEvent, preferences: NotificationPreferences): Boolean {
-        val normalizedType = normalize(event.type)
-        val eventTypeKeys = setOfNotNull(normalizedType, normalize(event.category().label))
+        val eventTypeKeys = eventTypeKeys(event)
         val normalizedRegion = normalize(event.region)
         val normalizedZone = normalize(event.guessZone())
         val normalizedMutedTypes = preferences.mutedTypes.mapNotNull(::normalize).toSet()
@@ -85,4 +84,22 @@ object NotificationRuleEngine {
 
     private fun normalize(value: String?): String? =
         value?.trim()?.takeIf { it.isNotEmpty() }?.lowercase()
+
+    private fun eventTypeKeys(event: BcEvent): Set<String> {
+        val definition = EventTypeCatalog.resolve(event.type)
+        return buildSet {
+            listOf(event.type, definition.key, definition.label).mapNotNullTo(this, ::normalize)
+            if (definition.key.startsWith("MF_AGGIORNAM_METODOLOGICO")) add("mam")
+            if (definition.key.startsWith("MF_") || definition.key == "MODULO_FORMATIVO") add(MODULES)
+
+            val sourceText = listOfNotNull(event.type, event.title).joinToString(" ").lowercase()
+            if ("webicomp" in sourceText || "web i comp" in sourceText) add("webicomp")
+            if (MAM_PATTERN.containsMatchIn(sourceText)) add("mam")
+            if (MF_PATTERN.containsMatchIn(sourceText)) add(MODULES)
+        }
+    }
+
+    private const val MODULES = "moduli formativi"
+    private val MAM_PATTERN = Regex("\\bmam\\b|mf-am|aggiorn(?:am\\.|amento) metodologico")
+    private val MF_PATTERN = Regex("\\bmf(?:-|\\b)|modul[oi] formativ[oi]")
 }

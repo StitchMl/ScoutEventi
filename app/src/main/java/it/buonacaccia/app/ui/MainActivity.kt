@@ -101,6 +101,8 @@ import androidx.core.net.toUri
 import it.buonacaccia.app.R
 import it.buonacaccia.app.data.BcEvent
 import it.buonacaccia.app.data.EventAcronymGlossary
+import it.buonacaccia.app.data.EventTypeCatalog
+import it.buonacaccia.app.data.EventTypeDefinition
 import it.buonacaccia.app.data.EventStore
 import it.buonacaccia.app.data.NotificationTypeRegionRule
 import it.buonacaccia.app.data.ZoneCatalog
@@ -303,14 +305,27 @@ private fun MainScreen(
     var showInfo by remember { mutableStateOf(initialShowInfo) }
     var showBatteryHints by remember { mutableStateOf(initialShowBatteryHints) }
 
-    // List of available types (derived from current events)
-    val availableTypes = remember(state.items) {
-        state.items.mapNotNull { it.type?.trim()?.takeIf(String::isNotEmpty) }
-            .toSortedSet(String.CASE_INSENSITIVE_ORDER)
-            .toList()
+    val mutedTypes by EventStore.muteTypesFlow(context).collectAsState(initial = emptySet())
+    val canonicalInterestedTypes = remember(interestedTypes) {
+        interestedTypes.mapTo(linkedSetOf(), EventTypeCatalog::canonicalLabel)
+    }
+    val canonicalMutedTypes = remember(mutedTypes) {
+        mutedTypes.mapTo(linkedSetOf(), EventTypeCatalog::canonicalLabel)
+    }
+    val canonicalTypeRegionRules = remember(typeRegionRules) {
+        typeRegionRules
+            .groupBy { EventTypeCatalog.canonicalLabel(it.type) }
+            .map { (type, rules) -> NotificationTypeRegionRule(type, rules.flatMap { it.regions }.toSet()) }
+    }
+    val availableTypes = remember(state.items, canonicalInterestedTypes, canonicalMutedTypes, canonicalTypeRegionRules) {
+        buildSet {
+            EventTypeCatalog.definitionsFor(state.items).mapTo(this, EventTypeDefinition::label)
+            addAll(canonicalInterestedTypes)
+            addAll(canonicalMutedTypes)
+            canonicalTypeRegionRules.mapTo(this) { it.type }
+        }.sortedWith(String.CASE_INSENSITIVE_ORDER)
     }
     val availableZones = remember { ZoneCatalog.allNames() }
-    val mutedTypes by EventStore.muteTypesFlow(context).collectAsState(initial = emptySet())
 
     Scaffold(
         topBar = {
@@ -445,17 +460,18 @@ private fun MainScreen(
             themeMode = themeMode,
             onChangeTheme = onChangeTheme,
             acronymEntries = EventAcronymGlossary.entriesFor(state.items),
+            typeEntries = EventTypeCatalog.definitionsFor(state.items),
         )
         return
     }
 
     if (showNotificationSettings) {
         NotificationSettingsDialog(
-            interestedTypes = interestedTypes,
-            mutedTypes = mutedTypes,
+            interestedTypes = canonicalInterestedTypes,
+            mutedTypes = canonicalMutedTypes,
             interestedRegions = interestedRegions,
             interestedZones = interestedZones,
-            typeRegionRules = typeRegionRules,
+            typeRegionRules = canonicalTypeRegionRules,
             availableTypes = availableTypes,
             availableRegions = vm.regions,
             availableZones = availableZones,
@@ -801,6 +817,7 @@ private fun InfoScreen(
     themeMode: EventStore.ThemeMode,
     onChangeTheme: (EventStore.ThemeMode) -> Unit,
     acronymEntries: List<Pair<String, String>>,
+    typeEntries: List<EventTypeDefinition>,
 ) {
     Scaffold(
         topBar = {
@@ -851,10 +868,23 @@ private fun InfoScreen(
                 Text("Le sigle compaiono dopo il primo aggiornamento.", style = MaterialTheme.typography.bodySmall)
             }
             Text(
-                "WebiComp è l’etichetta usata da BuonaCaccia per eventi online sulle competenze. " +
-                    "Filtri e legenda dipendono dagli eventi scaricati.",
+                "Una sigla non documentata viene indicata come tale: apri il dettaglio dell’evento per verificarla.",
                 style = MaterialTheme.typography.bodySmall,
             )
+
+            HorizontalDivider()
+
+            Text("Tipologie eventi", style = MaterialTheme.typography.titleMedium)
+            typeEntries.forEach { definition ->
+                Text(definition.label, style = MaterialTheme.typography.labelLarge)
+                Text(
+                    "${definition.description} · ${definition.family} · ${definition.scope}",
+                    style = MaterialTheme.typography.bodySmall,
+                )
+            }
+            if (typeEntries.isEmpty()) {
+                Text("Le tipologie compaiono dopo il primo aggiornamento.", style = MaterialTheme.typography.bodySmall)
+            }
 
             HorizontalDivider()
 

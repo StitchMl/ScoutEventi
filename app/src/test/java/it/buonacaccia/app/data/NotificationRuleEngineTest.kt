@@ -34,6 +34,30 @@ class NotificationRuleEngineTest {
     }
 
     @Test
+    fun shouldNotify_usesLegacyCategoryFromTitleWhenTypeIsGeneric() {
+        val event = event(type = "CAPI", region = "Lazio").copy(title = "WebiComp sicurezza")
+
+        assertTrue(
+            NotificationRuleEngine.shouldNotify(
+                event,
+                NotificationPreferences(allowedTypes = setOf("WebiComp")),
+            ),
+        )
+    }
+
+    @Test
+    fun shouldNotify_doesNotTreatFamilyAsSelectedType() {
+        val cfa = event(type = "CFA", region = "Lazio")
+
+        assertFalse(
+            NotificationRuleEngine.shouldNotify(
+                cfa,
+                NotificationPreferences(allowedTypes = setOf("Formazione capi")),
+            ),
+        )
+    }
+
+    @Test
     fun shouldNotify_supportsMixedTypeAndRegionFilters() {
         val preferences = NotificationPreferences(
             allowedTypes = setOf("Specialità", "Moduli"),
