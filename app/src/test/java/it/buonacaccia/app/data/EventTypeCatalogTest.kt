@@ -16,6 +16,12 @@ class EventTypeCatalogTest {
     }
 
     @Test
+    fun notificationCodeUsesOneStableIdentityForAliases() {
+        assertEquals("MF-PC", EventTypeCatalog.notificationCode("MF-Protezione civile"))
+        assertEquals("MF-PC", EventTypeCatalog.notificationCode("MF-PC"))
+    }
+
+    @Test
     fun historicalAliasesResolveToStableKeys() {
         assertEquals("ALTRO_E_G", EventTypeCatalog.resolve("E/G").key)
         assertEquals("MF_AGGIORNAM_METODOLOGICO_E_G", EventTypeCatalog.resolve("MAM E/G").key)

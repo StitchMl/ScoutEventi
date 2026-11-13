@@ -195,6 +195,11 @@ object EventTypeCatalog {
             ?: definition.label
     }
 
+    fun notificationCode(value: String): String {
+        val definition = resolve(value)
+        return if (definition.known) preferredCode(definition) else value.trim()
+    }
+
     fun explanation(value: String, events: Iterable<BcEvent> = emptyList()): String {
         val definition = resolve(value)
         if (definition.known) {

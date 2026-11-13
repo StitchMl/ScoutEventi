@@ -310,21 +310,23 @@ private fun MainScreen(
     BackHandler(enabled = showInfo) { showInfo = false }
 
     val mutedTypes by EventStore.muteTypesFlow(context).collectAsState(initial = emptySet())
-    val canonicalInterestedTypes = remember(interestedTypes, state.items) {
-        interestedTypes.mapTo(linkedSetOf()) { EventTypeCatalog.displayCode(it, state.items) }
+    val canonicalInterestedTypes = remember(interestedTypes) {
+        interestedTypes.mapTo(linkedSetOf(), EventTypeCatalog::notificationCode)
     }
-    val canonicalMutedTypes = remember(mutedTypes, state.items) {
-        mutedTypes.mapTo(linkedSetOf()) { EventTypeCatalog.displayCode(it, state.items) }
+    val canonicalMutedTypes = remember(mutedTypes) {
+        mutedTypes.mapTo(linkedSetOf(), EventTypeCatalog::notificationCode)
     }
-    val canonicalTypeRegionRules = remember(typeRegionRules, state.items) {
+    val canonicalTypeRegionRules = remember(typeRegionRules) {
         typeRegionRules
-            .groupBy { EventTypeCatalog.displayCode(it.type, state.items) }
+            .groupBy { EventTypeCatalog.notificationCode(it.type) }
             .map { (type, rules) -> NotificationTypeRegionRule(type, rules.flatMap { it.regions }.toSet()) }
     }
     val availableTypes = remember(state.items, canonicalInterestedTypes, canonicalMutedTypes) {
         buildList {
             addAll(EventTypeCatalog.notificationCodes)
-            state.items.mapNotNullTo(this) { it.type?.trim()?.takeIf(String::isNotEmpty) }
+            state.items.mapNotNullTo(this) { event ->
+                event.type?.trim()?.takeIf(String::isNotEmpty)?.let(EventTypeCatalog::notificationCode)
+            }
             addAll(canonicalInterestedTypes)
             addAll(canonicalMutedTypes)
         }.distinctBy { EventTypeCatalog.resolve(it).key }
