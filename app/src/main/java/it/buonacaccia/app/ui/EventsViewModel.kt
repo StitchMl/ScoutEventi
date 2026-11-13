@@ -12,6 +12,7 @@ import it.buonacaccia.app.data.Branch
 import it.buonacaccia.app.data.BuonaCacciaFilter
 import it.buonacaccia.app.data.BuonaCacciaScopes
 import it.buonacaccia.app.data.EventStore
+import it.buonacaccia.app.data.EventTypeCatalog
 import it.buonacaccia.app.data.EventsRepository
 import it.buonacaccia.app.data.FetchSafety
 import it.buonacaccia.app.data.ZoneCatalog
@@ -160,11 +161,8 @@ class EventsViewModel(
     }
 
     val typeFilters: List<TypeFilter>
-        get() = listOf(TypeFilter.TUTTI) + state.items
-            .mapNotNull { it.type?.trim()?.takeIf(String::isNotEmpty) }
-            .distinctBy { it.lowercase() }
-            .sortedWith(String.CASE_INSENSITIVE_ORDER)
-            .map(TypeFilter::exact)
+        get() = listOf(TypeFilter.TUTTI) + EventTypeCatalog.definitionsFor(state.items)
+            .map(TypeFilter::catalog)
 
     val filtered: List<BcEvent>
         get() = EventFiltering.filter(state.items, state)

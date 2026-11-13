@@ -2,16 +2,21 @@ package it.buonacaccia.app.ui
 
 import it.buonacaccia.app.data.BcEvent
 import it.buonacaccia.app.data.Branch
+import it.buonacaccia.app.data.EventTypeCatalog
+import it.buonacaccia.app.data.EventTypeDefinition
 import it.buonacaccia.app.data.guessZone
 import it.buonacaccia.app.data.ZoneCatalog
 import java.util.Locale
 
 enum class UnitFilter { TUTTE, BRANCO, REPARTO, CLAN, CAPI }
-data class TypeFilter(val type: String?, val label: String) {
+data class TypeFilter(val key: String?, val label: String) {
     companion object {
         val TUTTI = TypeFilter(null, "Tutti")
 
-        fun exact(type: String): TypeFilter = TypeFilter(type.trim(), type.trim())
+        fun catalog(definition: EventTypeDefinition): TypeFilter =
+            TypeFilter(definition.key, definition.label)
+
+        fun exact(type: String): TypeFilter = catalog(EventTypeCatalog.resolve(type))
     }
 }
 
@@ -71,7 +76,7 @@ internal object EventFiltering {
     }
 
     private fun matchesType(event: BcEvent, type: TypeFilter): Boolean =
-        type.type == null || event.type?.trim()?.equals(type.type, ignoreCase = true) == true
+        type.key == null || EventTypeCatalog.matches(event, type.key)
 
     private fun String.normalized(): String = trim().lowercase(Locale.ROOT)
 
