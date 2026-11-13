@@ -314,10 +314,49 @@ class HtmlParserTest {
         )
 
         assertEquals(
-            listOf("E/G", "CFM", "EPPPI"),
+            listOf("CFM E/G"),
             EventAcronymGlossary.entriesFor(listOf(event)).map { it.first },
         )
     }
+
+    @Test
+    fun acronymGlossary_explainsActualBuonaCacciaTypeCodes() {
+        val events = listOf(
+            glossaryEvent("MF-EVC", "MF-Vita Cristiana - Oltre ciò che si vede", "Umbria", Branch.CAPI),
+            glossaryEvent("MF-VPCFI", "MF-Volontari PC - Formati informati", "Lazio", Branch.CAPI),
+            glossaryEvent("AssZona", "Assemblea di Zona", "Lazio", Branch.CAPI),
+            glossaryEvent("StartAssit", "Evento Start Assistant", "Lazio", Branch.CAPI),
+        )
+
+        val entries = EventAcronymGlossary.entriesFor(events).toMap()
+
+        assertEquals("Modulo formativo sulla vita cristiana", entries["MF-EVC"])
+        assertEquals("Modulo per volontari PC formati e informati, D.Lgs. 81/08", entries["MF-VPCFI"])
+        assertEquals("Assemblea di Zona", entries["AssZona"])
+        assertEquals("Evento Start Assistant per formatori", entries["StartAssit"])
+    }
+
+    @Test
+    fun acronymGlossary_infersUncataloguedTypeFromEventTitle() {
+        val event = glossaryEvent("MF-NUOVO", "MF-Nuovo ambito - Titolo", "Lazio", Branch.CAPI)
+
+        assertEquals("MF-Nuovo ambito", EventAcronymGlossary.entriesFor(listOf(event)).single().second)
+    }
+
+    private fun glossaryEvent(type: String, title: String, region: String, branch: Branch) = BcEvent(
+        id = title,
+        type = type,
+        title = title,
+        region = region,
+        startDate = null,
+        endDate = null,
+        fee = null,
+        location = null,
+        enrolled = null,
+        status = null,
+        detailUrl = "https://buonacaccia.agesci.it/",
+        branch = branch,
+    )
 
     private fun assertTrue(value: Boolean) {
         assertEquals(true, value)

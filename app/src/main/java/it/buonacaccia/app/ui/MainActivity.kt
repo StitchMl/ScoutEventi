@@ -100,7 +100,6 @@ import androidx.core.graphics.toColorInt
 import androidx.core.net.toUri
 import it.buonacaccia.app.R
 import it.buonacaccia.app.data.BcEvent
-import it.buonacaccia.app.data.EventAcronymGlossary
 import it.buonacaccia.app.data.EventTypeCatalog
 import it.buonacaccia.app.data.EventTypeDefinition
 import it.buonacaccia.app.data.EventStore
@@ -459,8 +458,6 @@ private fun MainScreen(
             onClose = { showInfo = false },
             themeMode = themeMode,
             onChangeTheme = onChangeTheme,
-            acronymEntries = EventAcronymGlossary.entriesFor(state.items),
-            typeEntries = EventTypeCatalog.definitionsFor(state.items),
         )
         return
     }
@@ -596,6 +593,7 @@ private fun FiltersRow(
     onlyFollowed: Boolean,
     onOnlyFollowedChange: (Boolean) -> Unit
 ) {
+    var explainedType by remember { mutableStateOf<TypeFilter?>(null) }
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -725,12 +723,27 @@ private fun FiltersRow(
                     availableTypeFilters.forEach { value ->
                         DropdownMenuItem(
                             text = { Text(value.label) },
+                            trailingIcon = if (value.key == null) null else ({
+                                IconButton(onClick = { explainedType = value }) {
+                                    Icon(Icons.Default.Info, contentDescription = "Spiega ${value.label}")
+                                }
+                            }),
                             onClick = { onTypeChange(value); expandedT = false }
                         )
                     }
                 }
             }
         }
+    }
+    explainedType?.let { type ->
+        AlertDialog(
+            onDismissRequest = { explainedType = null },
+            confirmButton = {
+                TextButton(onClick = { explainedType = null }) { Text("Chiudi") }
+            },
+            title = { Text(type.label) },
+            text = { Text(EventTypeCatalog.resolve(type.label).description) },
+        )
     }
     Row(
         modifier = Modifier
@@ -816,8 +829,6 @@ private fun InfoScreen(
     onClose: () -> Unit,
     themeMode: EventStore.ThemeMode,
     onChangeTheme: (EventStore.ThemeMode) -> Unit,
-    acronymEntries: List<Pair<String, String>>,
-    typeEntries: List<EventTypeDefinition>,
 ) {
     Scaffold(
         topBar = {
@@ -857,34 +868,6 @@ private fun InfoScreen(
             LegendRow(colorHex = "#FFEB3B", label = "Attenzione / quasi pieno (giallo)")
             LegendRow(colorHex = "#9C27B0", label = "Lista d’attesa (viola)")
             LegendRow(colorHex = "#F44336", label = "Iscrizioni chiuse (rosso)")
-
-            HorizontalDivider()
-
-            Text("Sigle degli eventi", style = MaterialTheme.typography.titleMedium)
-            acronymEntries.forEach { (acronym, meaning) ->
-                Text("$acronym: $meaning", style = MaterialTheme.typography.bodySmall)
-            }
-            if (acronymEntries.isEmpty()) {
-                Text("Le sigle compaiono dopo il primo aggiornamento.", style = MaterialTheme.typography.bodySmall)
-            }
-            Text(
-                "Una sigla non documentata viene indicata come tale: apri il dettaglio dell’evento per verificarla.",
-                style = MaterialTheme.typography.bodySmall,
-            )
-
-            HorizontalDivider()
-
-            Text("Tipologie eventi", style = MaterialTheme.typography.titleMedium)
-            typeEntries.forEach { definition ->
-                Text(definition.label, style = MaterialTheme.typography.labelLarge)
-                Text(
-                    "${definition.description} · ${definition.family} · ${definition.scope}",
-                    style = MaterialTheme.typography.bodySmall,
-                )
-            }
-            if (typeEntries.isEmpty()) {
-                Text("Le tipologie compaiono dopo il primo aggiornamento.", style = MaterialTheme.typography.bodySmall)
-            }
 
             HorizontalDivider()
 

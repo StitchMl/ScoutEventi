@@ -20,6 +20,10 @@ class EventTypeCatalogTest {
         assertEquals("MF_AGGIORNAM_METODOLOGICO_E_G", EventTypeCatalog.resolve("MF-AM E/G").key)
         assertEquals("MF_PERCORSO_DI_TIROCINIO", EventTypeCatalog.resolve("PT").key)
         assertEquals("WEBICOMP", EventTypeCatalog.resolve("web i comp").key)
+        assertEquals("MF_VITA_CRISTIANA", EventTypeCatalog.resolve("MF-EVC").key)
+        assertEquals("MF_VOLONTARI_PC_FORMATI_INFORMATI_D_LGS_81_08", EventTypeCatalog.resolve("MF-VPCFI").key)
+        assertEquals("ASSEMBLEA_DI_ZONA", EventTypeCatalog.resolve("AssZona").key)
+        assertEquals("EVENTO_START_ASSISTANT", EventTypeCatalog.resolve("StartAssit").key)
     }
 
     @Test
