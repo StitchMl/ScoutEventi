@@ -23,6 +23,10 @@ data class PreparedUpdate(
     val apkFile: File,
 )
 
+data class AvailableUpdate(
+    val versionName: String,
+)
+
 object AppUpdateManager {
     private const val LATEST_RELEASE_URL =
         "https://api.github.com/repos/StitchMl/ScoutEventi/releases/latest"
@@ -33,6 +37,7 @@ object AppUpdateManager {
     private const val DOWNLOADED_APK_PATH = "downloaded_apk_path"
     private const val DOWNLOADED_VERSION = "downloaded_version"
     private const val DOWNLOADED_SHA256 = "downloaded_sha256"
+    private const val AUTOMATIC_DOWNLOADS_ENABLED = "automatic_downloads_enabled"
     private const val USER_AGENT_HEADER = "User-Agent"
     private const val GITHUB_HOST = "github.com"
 
@@ -63,6 +68,30 @@ object AppUpdateManager {
         } catch (_: Exception) {
             null
         }
+    }
+
+    suspend fun findLatestUpdate(suppressFailures: Boolean = true): AvailableUpdate? =
+        withContext(Dispatchers.IO) {
+            try {
+                val release = fetchLatestRelease() ?: return@withContext null
+                release.takeIf { isNewerVersion(it.versionName, BuildConfig.VERSION_NAME) }
+                    ?.let { AvailableUpdate(it.versionName) }
+            } catch (cancellation: CancellationException) {
+                throw cancellation
+            } catch (error: Exception) {
+                if (suppressFailures) null else throw error
+            }
+        }
+
+    fun automaticDownloadsEnabled(context: Context): Boolean =
+        context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            .getBoolean(AUTOMATIC_DOWNLOADS_ENABLED, false)
+
+    fun enableAutomaticDownloads(context: Context) {
+        context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            .edit()
+            .putBoolean(AUTOMATIC_DOWNLOADS_ENABLED, true)
+            .apply()
     }
 
     private fun findOrDownloadLatestLocked(context: Context): PreparedUpdate? {
