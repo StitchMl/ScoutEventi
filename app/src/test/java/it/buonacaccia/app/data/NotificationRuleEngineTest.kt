@@ -14,13 +14,13 @@ class NotificationRuleEngineTest {
         assertTrue(
             NotificationRuleEngine.shouldNotify(
                 event,
-                NotificationPreferences(allowedTypes = setOf("EPI")),
+                NotificationPreferences(allowedTypes = setOf("EPPPI")),
             ),
         )
         assertFalse(
             NotificationRuleEngine.shouldNotify(
                 event,
-                NotificationPreferences(mutedTypes = setOf("EPI")),
+                NotificationPreferences(mutedTypes = setOf("EPPPI")),
             ),
         )
         assertTrue(
@@ -40,19 +40,19 @@ class NotificationRuleEngineTest {
         assertTrue(
             NotificationRuleEngine.shouldNotify(
                 mam,
-                NotificationPreferences(allowedTypes = setOf("MAM")),
+                NotificationPreferences(allowedTypes = setOf("MF-AM E/G")),
             ),
         )
         assertFalse(
             NotificationRuleEngine.shouldNotify(
                 webiComp,
-                NotificationPreferences(allowedTypes = setOf("MAM")),
+                NotificationPreferences(allowedTypes = setOf("MF-AM E/G")),
             ),
         )
         assertFalse(
             NotificationRuleEngine.shouldNotify(
                 mam,
-                NotificationPreferences(mutedTypes = setOf("MAM")),
+                NotificationPreferences(mutedTypes = setOf("MF-AM E/G")),
             ),
         )
     }
