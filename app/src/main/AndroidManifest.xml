@@ -4,7 +4,6 @@
 
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
-    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
 
     <application
         android:name=".App"
@@ -35,16 +34,6 @@
             android:authorities="${applicationId}.androidx-startup"
             android:exported="false"
             tools:node="remove" />
-
-        <provider
-            android:name="androidx.core.content.FileProvider"
-            android:authorities="${applicationId}.updates"
-            android:exported="false"
-            android:grantUriPermissions="true">
-            <meta-data
-                android:name="android.support.FILE_PROVIDER_PATHS"
-                android:resource="@xml/update_file_paths" />
-        </provider>
 
         <receiver
             android:name=".widget.UpcomingOpeningsWidgetReceiver"
