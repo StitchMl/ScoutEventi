@@ -28,7 +28,7 @@ class UpdateWorker(
                 suppressFailures = false,
             )?.let(::notifyUpdateReady)
         } else {
-            AppUpdateManager.findLatestUpdate()?.let { update ->
+            AppUpdateManager.findLatestUpdate(suppressFailures = false)?.let { update ->
                 notifyUpdate(update.versionName, "Tocca per autorizzare il download")
             }
         }

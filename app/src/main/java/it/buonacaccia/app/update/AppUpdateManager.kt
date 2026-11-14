@@ -70,11 +70,18 @@ object AppUpdateManager {
         }
     }
 
-    suspend fun findLatestUpdate(): AvailableUpdate? = withContext(Dispatchers.IO) {
-        val release = fetchLatestRelease() ?: return@withContext null
-        release.takeIf { isNewerVersion(it.versionName, BuildConfig.VERSION_NAME) }
-            ?.let { AvailableUpdate(it.versionName) }
-    }
+    suspend fun findLatestUpdate(suppressFailures: Boolean = true): AvailableUpdate? =
+        withContext(Dispatchers.IO) {
+            try {
+                val release = fetchLatestRelease() ?: return@withContext null
+                release.takeIf { isNewerVersion(it.versionName, BuildConfig.VERSION_NAME) }
+                    ?.let { AvailableUpdate(it.versionName) }
+            } catch (cancellation: CancellationException) {
+                throw cancellation
+            } catch (error: Exception) {
+                if (suppressFailures) null else throw error
+            }
+        }
 
     fun automaticDownloadsEnabled(context: Context): Boolean =
         context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
