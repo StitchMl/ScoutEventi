@@ -1,11 +1,14 @@
 package it.buonacaccia.app.update
 
+import android.app.DownloadManager
+import android.content.ContentValues
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.os.Build
-import android.provider.Settings
-import androidx.core.content.FileProvider
+import android.os.Environment
+import android.provider.MediaStore
+import androidx.annotation.RequiresApi
 import it.buonacaccia.app.BuildConfig
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.CancellationException
@@ -32,8 +35,6 @@ object AppUpdateManager {
         "https://api.github.com/repos/StitchMl/ScoutEventi/releases/latest"
     private const val MAX_APK_BYTES = 100L * 1024 * 1024
     private const val PREFS_NAME = "github_update"
-    private const val PENDING_APK_PATH = "pending_apk_path"
-    private const val PENDING_VERSION = "pending_version"
     private const val DOWNLOADED_APK_PATH = "downloaded_apk_path"
     private const val DOWNLOADED_VERSION = "downloaded_version"
     private const val DOWNLOADED_SHA256 = "downloaded_sha256"
@@ -130,37 +131,22 @@ object AppUpdateManager {
         return PreparedUpdate(version, apk)
     }
 
-    fun requestInstall(context: Context, update: PreparedUpdate) {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O &&
-            !context.packageManager.canRequestPackageInstalls()
-        ) {
-            rememberPending(context, update)
-            context.startActivity(
-                Intent(
-                    Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES,
-                    Uri.parse("package:${context.packageName}"),
-                ).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
-            )
+    suspend fun handoffToSystemInstaller(context: Context, update: PreparedUpdate) {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) {
+            openGitHubDownload(context, update.versionName)
             return
         }
-        clearPending(context)
-        launchPackageInstaller(context, update.apkFile)
-    }
-
-    fun resumePendingInstall(context: Context) {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O &&
-            !context.packageManager.canRequestPackageInstalls()
-        ) return
-
-        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-        val path = prefs.getString(PENDING_APK_PATH, null) ?: return
-        val file = File(path)
-        if (!file.isFile) {
-            prefs.edit().clear().apply()
+        val published = withContext(Dispatchers.IO) {
+            runCatching { publishVerifiedApk(context, update) }.isSuccess
+        }
+        if (!published) {
+            openGitHubDownload(context, update.versionName)
             return
         }
-        launchPackageInstaller(context, file)
-        clearPending(context)
+        context.startActivity(
+            Intent(DownloadManager.ACTION_VIEW_DOWNLOADS)
+                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+        )
     }
 
     internal fun isNewerVersion(candidate: String, current: String): Boolean {
@@ -246,29 +232,37 @@ object AppUpdateManager {
         }
     }
 
-    private fun launchPackageInstaller(context: Context, apk: File) {
-        val uri = FileProvider.getUriForFile(context, "${context.packageName}.updates", apk)
+    @RequiresApi(Build.VERSION_CODES.Q)
+    private fun publishVerifiedApk(context: Context, update: PreparedUpdate) {
+        val resolver = context.contentResolver
+        val fileName = "ScoutEventi-Android-v${update.versionName}.apk"
+        val values = ContentValues().apply {
+            put(MediaStore.Downloads.DISPLAY_NAME, fileName)
+            put(MediaStore.Downloads.MIME_TYPE, APK_MIME_TYPE)
+            put(MediaStore.Downloads.RELATIVE_PATH, "${Environment.DIRECTORY_DOWNLOADS}/ScoutEventi")
+            put(MediaStore.Downloads.IS_PENDING, 1)
+        }
+        val uri = resolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, values)
+            ?: error("Impossibile preparare l'aggiornamento nei Download")
+        try {
+            resolver.openOutputStream(uri, "w")?.use { output ->
+                update.apkFile.inputStream().use { input -> input.copyTo(output) }
+            } ?: error("Impossibile scrivere l'aggiornamento nei Download")
+            values.clear()
+            values.put(MediaStore.Downloads.IS_PENDING, 0)
+            check(resolver.update(uri, values, null, null) == 1)
+        } catch (error: Exception) {
+            resolver.delete(uri, null, null)
+            throw error
+        }
+    }
+
+    private fun openGitHubDownload(context: Context, versionName: String) {
+        val url = "https://github.com/StitchMl/ScoutEventi/releases/download/" +
+            "v$versionName/ScoutEventi-Android-v$versionName.apk"
         context.startActivity(
-            Intent(Intent.ACTION_VIEW)
-                .setDataAndType(uri, "application/vnd.android.package-archive")
-                .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_ACTIVITY_NEW_TASK),
+            Intent(Intent.ACTION_VIEW, Uri.parse(url)).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
         )
-    }
-
-    private fun rememberPending(context: Context, update: PreparedUpdate) {
-        context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-            .edit()
-            .putString(PENDING_APK_PATH, update.apkFile.absolutePath)
-            .putString(PENDING_VERSION, update.versionName)
-            .apply()
-    }
-
-    private fun clearPending(context: Context) {
-        context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-            .edit()
-            .remove(PENDING_APK_PATH)
-            .remove(PENDING_VERSION)
-            .apply()
     }
 
     private fun rememberDownloaded(context: Context, update: PreparedUpdate, expectedHash: String) {
@@ -308,4 +302,6 @@ object AppUpdateManager {
         val apkUrl: String,
         val expectedSha256: String,
     )
+
+    private const val APK_MIME_TYPE = "application/vnd.android.package-archive"
 }

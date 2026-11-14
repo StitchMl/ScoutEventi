@@ -183,17 +183,22 @@ class MainActivity : ComponentActivity() {
                         title = { Text("Aggiornamento ${update.versionName}") },
                         text = {
                             Text(
-                                "APK scaricato da GitHub Releases e verificato. " +
-                                    "Android chiederà conferma prima dell’installazione.",
+                                "APK scaricato da GitHub Releases e verificato. Sarà copiato nei " +
+                                    "Download: toccalo lì per confermare l’installazione con Android.",
                             )
                         },
                         confirmButton = {
                             Button(
                                 onClick = {
-                                    AppUpdateManager.requestInstall(this@MainActivity, update)
                                     preparedUpdate = null
+                                    activityScope.launch {
+                                        AppUpdateManager.handoffToSystemInstaller(
+                                            this@MainActivity,
+                                            update,
+                                        )
+                                    }
                                 },
-                            ) { Text("Installa") }
+                            ) { Text("Apri Download") }
                         },
                         dismissButton = {
                             TextButton(onClick = { preparedUpdate = null }) { Text("Più tardi") }
@@ -230,11 +235,6 @@ class MainActivity : ComponentActivity() {
                 }
             }
         }
-    }
-
-    override fun onResume() {
-        super.onResume()
-        AppUpdateManager.resumePendingInstall(this)
     }
 
     // === BATTERY OPTIMIZATION & HUAWEI AUTO-START HANDLING (Play policy-safe) ===
