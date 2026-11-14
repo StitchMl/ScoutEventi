@@ -110,6 +110,7 @@ import it.buonacaccia.app.data.ZoneCatalog
 import it.buonacaccia.app.ui.components.EventCard
 import it.buonacaccia.app.ui.theme.BuonaCacciaTheme
 import it.buonacaccia.app.update.AppUpdateManager
+import it.buonacaccia.app.update.AvailableUpdate
 import it.buonacaccia.app.update.PreparedUpdate
 import kotlinx.coroutines.launch
 import org.koin.androidx.compose.koinViewModel
@@ -152,10 +153,17 @@ class MainActivity : ComponentActivity() {
             // ✅ scope Compose to launch coroutines from the composable
             val activityScope = rememberCoroutineScope()
             var preparedUpdate by remember { mutableStateOf<PreparedUpdate?>(null) }
+            var availableUpdate by remember { mutableStateOf<AvailableUpdate?>(null) }
 
             LaunchedEffect(Unit) {
                 preparedUpdate = AppUpdateManager.findDownloadedUpdate(this@MainActivity)
-                    ?: AppUpdateManager.findOrDownloadLatest(this@MainActivity)
+                if (preparedUpdate == null) {
+                    if (AppUpdateManager.automaticDownloadsEnabled(this@MainActivity)) {
+                        preparedUpdate = AppUpdateManager.findOrDownloadLatest(this@MainActivity)
+                    } else {
+                        availableUpdate = AppUpdateManager.findLatestUpdate()
+                    }
+                }
             }
 
             BuonaCacciaTheme(darkTheme = dark) {
@@ -189,6 +197,34 @@ class MainActivity : ComponentActivity() {
                         },
                         dismissButton = {
                             TextButton(onClick = { preparedUpdate = null }) { Text("Più tardi") }
+                        },
+                    )
+                }
+                availableUpdate?.let { update ->
+                    AlertDialog(
+                        onDismissRequest = { availableUpdate = null },
+                        title = { Text("Aggiornamento ${update.versionName}") },
+                        text = {
+                            Text(
+                                "GitHub ha pubblicato una nuova versione. Autorizza il download " +
+                                    "automatico degli aggiornamenti. Android chiederà sempre conferma " +
+                                    "prima dell’installazione.",
+                            )
+                        },
+                        confirmButton = {
+                            Button(
+                                onClick = {
+                                    AppUpdateManager.enableAutomaticDownloads(this@MainActivity)
+                                    availableUpdate = null
+                                    activityScope.launch {
+                                        preparedUpdate =
+                                            AppUpdateManager.findOrDownloadLatest(this@MainActivity)
+                                    }
+                                },
+                            ) { Text("Autorizza e scarica") }
+                        },
+                        dismissButton = {
+                            TextButton(onClick = { availableUpdate = null }) { Text("Più tardi") }
                         },
                     )
                 }

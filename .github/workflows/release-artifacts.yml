@@ -68,6 +68,11 @@ jobs:
             --ks-key-alias "$KEY_ALIAS" \
             --ks-pass "pass:$STORE_PASSWORD" \
             --key-pass "pass:$KEY_PASSWORD" \
+            --stamp-signer \
+            --ks "$RUNNER_TEMP/release.keystore" \
+            --ks-key-alias "$KEY_ALIAS" \
+            --ks-pass "pass:$STORE_PASSWORD" \
+            --key-pass "pass:$KEY_PASSWORD" \
             --out "build/ScoutEventi-Android-v${VERSION}.apk" \
             "build/ScoutEventi-Android-v${VERSION}-aligned.apk"
           "$BUILD_TOOLS/apksigner" verify --verbose --print-certs "build/ScoutEventi-Android-v${VERSION}.apk"

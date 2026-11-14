@@ -22,14 +22,24 @@ class UpdateWorker(
     params: WorkerParameters,
 ) : CoroutineWorker(appContext, params) {
     override suspend fun doWork(): Result = runCatching {
-        AppUpdateManager.findOrDownloadLatest(
-            context = applicationContext,
-            suppressFailures = false,
-        )?.let(::notifyUpdateReady)
+        if (AppUpdateManager.automaticDownloadsEnabled(applicationContext)) {
+            AppUpdateManager.findOrDownloadLatest(
+                context = applicationContext,
+                suppressFailures = false,
+            )?.let(::notifyUpdateReady)
+        } else {
+            AppUpdateManager.findLatestUpdate()?.let { update ->
+                notifyUpdate(update.versionName, "Tocca per autorizzare il download")
+            }
+        }
         Result.success()
     }.getOrElse { Result.retry() }
 
     private fun notifyUpdateReady(update: it.buonacaccia.app.update.PreparedUpdate) {
+        notifyUpdate(update.versionName, "Tocca per confermare l’installazione")
+    }
+
+    private fun notifyUpdate(versionName: String, message: String) {
         val manager = applicationContext.getSystemService(NotificationManager::class.java)
         manager.createNotificationChannel(
             NotificationChannel(CHANNEL_ID, "Aggiornamenti app", NotificationManager.IMPORTANCE_DEFAULT),
@@ -51,8 +61,8 @@ class UpdateWorker(
             9001,
             NotificationCompat.Builder(applicationContext, CHANNEL_ID)
                 .setSmallIcon(R.drawable.ic_new_event)
-                .setContentTitle("ScoutEventi ${update.versionName} pronto")
-                .setContentText("Tocca per confermare l’installazione")
+                .setContentTitle("ScoutEventi $versionName disponibile")
+                .setContentText(message)
                 .setContentIntent(pendingIntent)
                 .setAutoCancel(true)
                 .build(),
