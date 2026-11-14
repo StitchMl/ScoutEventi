@@ -22,6 +22,9 @@ class EventTypeCatalogTest {
     fun notificationCodeUsesOneStableIdentityForAliases() {
         assertEquals("Spec", EventTypeCatalog.notificationCode("Specialità"))
         assertEquals("Spec", EventTypeCatalog.notificationCode("Spec"))
+        assertEquals("EPPPI", EventTypeCatalog.notificationCode("EPI"))
+        assertEquals("CapiSq", EventTypeCatalog.notificationCode("CSq"))
+        assertEquals("Form", EventTypeCatalog.notificationCode("MF-Form"))
     }
 
     @Test

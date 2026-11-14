@@ -61,7 +61,7 @@ object EventTypeCatalog {
         simple("AREA_TRAINING_TEAM", "Area Training Team", FAMILY_TRAINERS, "Area", "ATT", "Area Training Team"),
         simple("ASSREG", "Assemblea regionale", FAMILY_GOVERNANCE, "Regione", "AssReg", "Assemblea regionale"),
         simple("CANDIDATURE_COMPETENZA", "Candidature Competenza", "Ragazzi", "E/G", "CComp", "Candidature Competenza"),
-        entry("CAPISQ", "Capi Squadriglia", "Campo o evento per capi squadriglia", "Ragazzi", "E/G", setOf("CapiSq", "Capi Squadriglia")),
+        entry("CAPISQ", "Capi Squadriglia", "Campo o evento per capi squadriglia", "Ragazzi", "E/G", setOf("CapiSq", "Capi Squadriglia", "CSq", "C.Sq.")),
         simple("CCG", "Campo capi Gruppo", FAMILY_LEADERS, CAPI_GRUPPO, "CCG"),
         entry("CFA", "CFA", "Campo di formazione associativa", FAMILY_LEADERS, "Trasversale", setOf("CFA")),
         entry("CFM_E_G", CFM_EG, "Campo di formazione metodologica E/G", FAMILY_LEADERS, "E/G", setOf(CFM_EG)),
@@ -70,7 +70,7 @@ object EventTypeCatalog {
         entry("CFT", "CFT", "Campo di formazione tirocinanti", FAMILY_LEADERS, "Trasversale", setOf("CFT")),
         simple("COMPETENZA", "Competenza", "Ragazzi", "E/G", "Comp", "Competenza"),
         simple("EVENTI_E_G", "E/G", "Ragazzi", "E/G", "E/G"),
-        entry("EPPPI", "EPPPI", "Eventi di progressione personale a partecipazione individuale", "Ragazzi", "R/S", setOf("EPPPI")),
+        entry("EPPPI", "EPPPI", "Eventi di progressione personale a partecipazione individuale", "Ragazzi", "R/S", setOf("EPPPI", "EPI")),
         entry("EVENTO_START_AIUTI", "Evento Start Aiuti", "Evento per aiuti dei campi scuola", FAMILY_TRAINERS, "Formatori", setOf("StartAiuti", "Evento Start Aiuti")),
         entry("EVENTO_START_ASSISTANT", "Evento Start Assistant", "Evento per assistant dei campi scuola", FAMILY_TRAINERS, "Formatori", setOf("StartAssit", "Evento Start Assistant")),
         simple("EVENTI_L_C", "L/C", "Ragazzi", "L/C", "L/C"),
@@ -85,7 +85,7 @@ object EventTypeCatalog {
         simple("MF_PERCORSO_DI_TIROCINIO", "MF - Percorso di tirocinio", FAMILY_MODULES, "Tirocinanti", "MF-PT", "MF-Percorso di tirocinio"),
         simple("MF_TEMATICHE_EDUCATIVE", "MF - Tematiche educative", FAMILY_MODULES, "Trasversale", "MF-TE", "MF-Tematiche educative"),
         simple("MF_TERZO_SETTORE", "MF - Terzo settore", FAMILY_MODULES, "Trasversale", "MF-TS", "MF-Terzo settore"),
-        simple("MODULO_PER_FORMATORI", "Modulo per formatori", FAMILY_MODULES, "Formatori", "Form", "Modulo per formatori"),
+        simple("MODULO_PER_FORMATORI", "Modulo per formatori", FAMILY_MODULES, "Formatori", "Form", "Modulo per formatori", "MF-Form"),
         simple("NATIONAL_TRAINING_TEAM", "National Training Team", FAMILY_TRAINERS, "Nazionale", "NTT", "National Training Team"),
         entry("PART", "Partenti", "Eventi per partenti", "Ragazzi", "R/S", setOf("Part", "Partenti")),
         simple("PO", "Piccole Orme", "Ragazzi", "L/C", "PO", "Piccole Orme"),
@@ -143,6 +143,7 @@ object EventTypeCatalog {
 
     fun preferredCode(definition: EventTypeDefinition): String {
         if (!definition.known) return definition.label
+        definitiveCodesByKey[definition.key]?.let { return it }
         val aliases = definition.aliases.filter(String::isNotBlank)
         val candidates = if (definition.family == FAMILY_MODULES) {
             aliases.filter { it.startsWith("MF", ignoreCase = true) }.ifEmpty { aliases }
@@ -152,6 +153,12 @@ object EventTypeCatalog {
         return candidates.minWithOrNull(compareBy<String> { it.length }.thenBy { it.lowercase() })
             ?: definition.label
     }
+
+    private val definitiveCodesByKey = mapOf(
+        "CAPISQ" to "CapiSq",
+        "EPPPI" to "EPPPI",
+        "MODULO_PER_FORMATORI" to "Form",
+    )
 
     fun notificationCode(value: String): String {
         val definition = resolve(value)
